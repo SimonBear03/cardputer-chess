@@ -1,0 +1,67 @@
+# Cardputer Chess
+
+Cardputer Chess is a complete offline chess game for the M5Stack
+Cardputer-Adv. It combines a compact, original C++ engine with a keyboard-first
+interface designed for the device's 240×135 display and ESP32-S3FN8 memory
+limits.
+
+## Features
+
+- Complete legal chess: castling, en passant, promotion, checkmate, stalemate,
+  repetition, fifty-move, and insufficient-material outcomes
+- Arrow-key square navigation with highlighted origin, legal destinations,
+  last move, and check
+- Play as White, Black, or a randomly selected side
+- Eight persistent difficulty levels from Beginner to Maximum
+- Iterative-deepening alpha-beta engine with quiescence search, transposition
+  table, pruning, positional evaluation, and compact opening book
+- Responsive dual-core firmware: the engine searches a private position on a
+  background FreeRTOS task
+- Host-side perft, rule, and search tests
+
+## Controls
+
+The printed arrow keys are `;` (up), `,` (left), `.` (down), and `/` (right).
+They work with or without `Fn`; `W/A/S/D` are aliases.
+
+| Input | Action |
+| --- | --- |
+| Arrows | Move board cursor or menu selection |
+| Enter / Space | Select or confirm |
+| Backspace | Cancel selection / close chooser |
+| Tab | Open or close the in-game menu |
+| U | Undo the last human turn |
+
+## Build and test
+
+Host validation requires a C++17 compiler:
+
+```sh
+make test
+make test-sanitize
+```
+
+Firmware validation and upload use PlatformIO without requiring a persistent
+global install:
+
+```sh
+uvx platformio run
+uvx platformio run --target upload
+uvx platformio device monitor
+```
+
+The firmware environment pins the M5Cardputer library at version 1.2.0, the
+first repository release that explicitly supports the Cardputer-Adv.
+
+## Layout
+
+- `include/cardputer_chess/` — portable rules and engine interfaces
+- `src/chess.cpp` — chess position, rules, FEN, and game outcomes
+- `src/engine.cpp` — evaluation, search, levels, hash table, and opening book
+- `src/main.cpp` — Cardputer UI, controls, persistence, and engine task
+- `tests/` — native correctness and search tests
+- `docs/` — architecture, validation, and hardware test checklist
+
+See [docs/architecture.md](docs/architecture.md) for boundaries and memory
+decisions.
+
