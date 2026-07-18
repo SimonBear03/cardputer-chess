@@ -516,11 +516,12 @@ int Engine::alphaBeta(Position& position, int depth, int ply, int alpha, int bet
     return alpha;
 }
 
-int Engine::searchRoot(Position& position, int depth, int alpha, int beta) {
+int Engine::searchRoot(Position& position, int depth, int alpha, int beta,
+                       const Move* excludedMoves, std::uint8_t excludedCount) {
     pvLength_[0] = 0;
     MoveList& moves = moveLists_[0];
     position.generateLegalMoves(moves);
-    rootMoveCount_ = moves.size;
+    rootMoveCount_ = 0;
     if (moves.size == 0) {
         return position.inCheck(position.sideToMove_) ? -kMateScore : 0;
     }
@@ -534,10 +535,19 @@ int Engine::searchRoot(Position& position, int depth, int alpha, int beta) {
     Move bestMove{};
     for (std::uint16_t index = 0; index < moves.size; ++index) {
         const Move move = moves[index];
+        bool excluded = false;
+        for (std::uint8_t excludedIndex = 0; excludedIndex < excludedCount;
+             ++excludedIndex) {
+            if (move == excludedMoves[excludedIndex]) {
+                excluded = true;
+                break;
+            }
+        }
+        if (excluded) continue;
         Undo undo;
         if (!position.makeMove(move, undo)) continue;
         int score = 0;
-        if (index == 0) {
+        if (rootMoveCount_ == 0) {
             score = -alphaBeta(position, depth - 1, 1, -beta, -alpha, true);
         } else {
             score = -alphaBeta(position, depth - 1, 1, -alpha - 1, -alpha, true);
@@ -547,7 +557,8 @@ int Engine::searchRoot(Position& position, int depth, int alpha, int beta) {
         }
         position.unmakeMove(move, undo);
         if (aborted_) return 0;
-        rootMoves_[index] = RootMove{move, static_cast<std::int16_t>(clampScore(score))};
+        rootMoves_[rootMoveCount_++] =
+            RootMove{move, static_cast<std::int16_t>(clampScore(score))};
         if (score > bestScore) {
             bestScore = score;
             bestMove = move;
@@ -577,7 +588,9 @@ int Engine::searchRoot(Position& position, int depth, int alpha, int beta) {
         rootMoves_[current] = candidate;
     }
     const std::uint8_t bound = alpha > originalAlpha ? kBoundExact : kBoundUpper;
-    storeHash(position.key_, depth, 0, bestScore, bound, bestMove);
+    if (excludedCount == 0) {
+        storeHash(position.key_, depth, 0, bestScore, bound, bestMove);
+    }
     return bestScore;
 }
 
@@ -695,14 +708,22 @@ SearchResult Engine::search(const Position& rootPosition, const SearchLimits& li
         return result;
     }
 
+    const std::uint8_t requestedLines = static_cast<std::uint8_t>(
+        std::max<int>(1, std::min<int>({limits.multiPv, kMaxAnalysisLines,
+                                        static_cast<int>(legal.size)})));
+
     Move bookMove;
-    if (limits.useOpeningBook && position.fullmoveNumber_ <= 8 &&
+    if (requestedLines == 1 && limits.useOpeningBook && position.fullmoveNumber_ <= 8 &&
         findBookMove(position, limits.randomSeed, bookMove)) {
         result.bestMove = bookMove;
         result.hasMove = true;
         result.fromBook = true;
         result.principalVariation[0] = bookMove;
         result.principalVariationLength = 1;
+        result.lines[0].bestMove = bookMove;
+        result.lines[0].principalVariation[0] = bookMove;
+        result.lines[0].principalVariationLength = 1;
+        result.lineCount = 1;
         result.elapsedMs = static_cast<std::uint32_t>(nowMs() - start);
         return result;
     }
@@ -711,50 +732,93 @@ SearchResult Engine::search(const Position& rootPosition, const SearchLimits& li
     const int depthLimit = std::max<int>(1, std::min<int>(limits.maxDepth,
                                                           kMaxSearchPly - 2));
     for (int depth = 1; depth <= depthLimit; ++depth) {
-        int alpha = -kInfinity;
-        int beta = kInfinity;
-        if (depth >= 4) {
-            alpha = std::max(-kInfinity, previousScore - 40);
-            beta = std::min(kInfinity, previousScore + 40);
+        std::array<AnalysisLine, kMaxAnalysisLines> depthLines{};
+        std::array<Move, kMaxAnalysisLines> excludedMoves{};
+        std::array<RootMove, kMaxMoves> primaryRootMoves{};
+        std::uint16_t primaryRootMoveCount = 0;
+        bool completedAllLines = true;
+
+        for (std::uint8_t lineIndex = 0; lineIndex < requestedLines; ++lineIndex) {
+            int alpha = -kInfinity;
+            int beta = kInfinity;
+            if (lineIndex == 0 && depth >= 4) {
+                alpha = std::max(-kInfinity, previousScore - 40);
+                beta = std::min(kInfinity, previousScore + 40);
+            }
+
+            int score = searchRoot(position, depth, alpha, beta, excludedMoves.data(),
+                                   lineIndex);
+            if (!aborted_ && (score <= alpha || score >= beta)) {
+                score = searchRoot(position, depth, -kInfinity, kInfinity,
+                                   excludedMoves.data(), lineIndex);
+            }
+            if (aborted_ || rootMoveCount_ == 0) {
+                completedAllLines = false;
+                break;
+            }
+
+            AnalysisLine& line = depthLines[lineIndex];
+            line.bestMove = rootMoves_[0].move;
+            line.scoreCp = static_cast<std::int16_t>(clampScore(score));
+            line.principalVariationLength = pvLength_[0];
+            std::copy_n(pvTable_[0].begin(), line.principalVariationLength,
+                        line.principalVariation.begin());
+            excludedMoves[lineIndex] = line.bestMove;
+
+            if (lineIndex == 0) {
+                previousScore = score;
+                primaryRootMoveCount = rootMoveCount_;
+                std::copy_n(rootMoves_.begin(), rootMoveCount_, primaryRootMoves.begin());
+            }
         }
 
-        int score = searchRoot(position, depth, alpha, beta);
-        if (!aborted_ && (score <= alpha || score >= beta)) {
-            score = searchRoot(position, depth, -kInfinity, kInfinity);
-        }
-        if (aborted_) break;
-        previousScore = score;
-        completedRootMoveCount_ = rootMoveCount_;
-        std::copy_n(rootMoves_.begin(), rootMoveCount_, completedRootMoves_.begin());
+        if (!completedAllLines) break;
 
+        completedRootMoveCount_ = primaryRootMoveCount;
+        std::copy_n(primaryRootMoves.begin(), primaryRootMoveCount,
+                    completedRootMoves_.begin());
         result.hasMove = true;
-        result.bestMove = rootMoves_[0].move;
-        result.scoreCp = static_cast<std::int16_t>(clampScore(score));
+        result.bestMove = depthLines[0].bestMove;
+        result.scoreCp = depthLines[0].scoreCp;
         result.completedDepth = static_cast<std::uint8_t>(depth);
-        result.principalVariationLength = pvLength_[0];
-        std::copy_n(pvTable_[0].begin(), result.principalVariationLength,
-                    result.principalVariation.begin());
-        if (std::abs(score) > kMateThreshold) break;
+        result.principalVariationLength = depthLines[0].principalVariationLength;
+        std::copy_n(depthLines[0].principalVariation.begin(),
+                    result.principalVariationLength, result.principalVariation.begin());
+        result.lines = depthLines;
+        result.lineCount = requestedLines;
+        if (std::abs(previousScore) > kMateThreshold) break;
         if (timed_ && nowMs() + 5 >= deadlineMs_) break;
     }
 
     if (!result.hasMove) {
         result.hasMove = true;
         result.bestMove = legal[0];
+        result.principalVariation[0] = legal[0];
+        result.principalVariationLength = 1;
+        result.lines[0].bestMove = legal[0];
+        result.lines[0].principalVariation[0] = legal[0];
+        result.lines[0].principalVariationLength = 1;
+        result.lineCount = 1;
         completedRootMoveCount_ = 1;
         completedRootMoves_[0] = RootMove{legal[0], 0};
     }
-    const Move skilled = chooseSkillMove(limits, limits.randomSeed ^ position.key_);
-    if (skilled.from != result.bestMove.from || skilled.to != result.bestMove.to ||
-        skilled.promotion != result.bestMove.promotion) {
-        result.bestMove = skilled;
-        result.principalVariation[0] = skilled;
-        result.principalVariationLength = 1;
-        for (std::uint16_t index = 0; index < completedRootMoveCount_; ++index) {
-            if (completedRootMoves_[index].move == skilled) {
-                result.scoreCp = completedRootMoves_[index].score;
-                break;
+    if (requestedLines == 1) {
+        const Move skilled = chooseSkillMove(limits, limits.randomSeed ^ position.key_);
+        if (skilled.from != result.bestMove.from || skilled.to != result.bestMove.to ||
+            skilled.promotion != result.bestMove.promotion) {
+            result.bestMove = skilled;
+            result.principalVariation[0] = skilled;
+            result.principalVariationLength = 1;
+            for (std::uint16_t index = 0; index < completedRootMoveCount_; ++index) {
+                if (completedRootMoves_[index].move == skilled) {
+                    result.scoreCp = completedRootMoves_[index].score;
+                    break;
+                }
             }
+            result.lines[0].bestMove = result.bestMove;
+            result.lines[0].scoreCp = result.scoreCp;
+            result.lines[0].principalVariation[0] = result.bestMove;
+            result.lines[0].principalVariationLength = 1;
         }
     }
     result.stopped = aborted_;

@@ -33,6 +33,8 @@ Classify meaningful work as `Ship`, `Branch`, `Ask`, or `Stop`.
 - Keep `main` buildable and easy to pull.
 - Simon explicitly authorized direct `main` development and publication for
   the initial complete application build on 2026-07-19.
+- Simon explicitly authorized direct `main` development for the coach-mode and
+  engine-strength release on 2026-07-19.
 - Use the current checkout and a short-lived `feat/`, `fix/`, `docs/`, or
   `spike/` branch for later nontrivial work unless Simon again prefers `main`.
 - Check `git status --short --branch` before and after meaningful edits.

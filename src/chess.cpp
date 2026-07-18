@@ -806,6 +806,85 @@ std::string Position::moveToUci(const Move& move) {
     return result;
 }
 
+std::string Position::moveToSan(const Move& requested) {
+    MoveList legalMoves;
+    generateLegalMoves(legalMoves);
+    Move move{};
+    bool found = false;
+    for (std::uint16_t index = 0; index < legalMoves.size; ++index) {
+        if (legalMoves[index] == requested) {
+            move = legalMoves[index];
+            found = true;
+            break;
+        }
+    }
+    if (!found) return moveToUci(requested);
+
+    std::string result;
+    if ((move.flags & MoveKingCastle) != 0U) {
+        result = "O-O";
+    } else if ((move.flags & MoveQueenCastle) != 0U) {
+        result = "O-O-O";
+    } else {
+        const Piece moving = board_[move.from];
+        const PieceType type = pieceType(moving);
+        if (type != PieceType::Pawn) {
+            char letter = 'N';
+            if (type == PieceType::Bishop) letter = 'B';
+            if (type == PieceType::Rook) letter = 'R';
+            if (type == PieceType::Queen) letter = 'Q';
+            if (type == PieceType::King) letter = 'K';
+            result.push_back(letter);
+
+            bool ambiguous = false;
+            bool sharesFile = false;
+            bool sharesRank = false;
+            for (std::uint16_t index = 0; index < legalMoves.size; ++index) {
+                const Move other = legalMoves[index];
+                if (other.from == move.from || other.to != move.to ||
+                    pieceType(board_[other.from]) != type) {
+                    continue;
+                }
+                ambiguous = true;
+                sharesFile = sharesFile || fileOf(other.from) == fileOf(move.from);
+                sharesRank = sharesRank || rankOf(other.from) == rankOf(move.from);
+            }
+            if (ambiguous) {
+                if (!sharesFile) {
+                    result.push_back(static_cast<char>('a' + fileOf(move.from)));
+                } else if (!sharesRank) {
+                    result.push_back(static_cast<char>('1' + rankOf(move.from)));
+                } else {
+                    result += squareName(move.from);
+                }
+            }
+        } else if (move.isCapture()) {
+            result.push_back(static_cast<char>('a' + fileOf(move.from)));
+        }
+
+        if (move.isCapture()) result.push_back('x');
+        result += squareName(move.to);
+        if (move.isPromotion()) {
+            result.push_back('=');
+            char promotion = 'Q';
+            if (move.promotion == PieceType::Rook) promotion = 'R';
+            if (move.promotion == PieceType::Bishop) promotion = 'B';
+            if (move.promotion == PieceType::Knight) promotion = 'N';
+            result.push_back(promotion);
+        }
+    }
+
+    Undo undo;
+    if (!makeMove(move, undo)) return moveToUci(move);
+    if (inCheck(sideToMove_)) {
+        MoveList replies;
+        generateLegalMoves(replies);
+        result.push_back(replies.size == 0 ? '#' : '+');
+    }
+    unmakeMove(move, undo);
+    return result;
+}
+
 bool Position::parseUciMove(std::string_view text, Move& result) {
     if (text.size() != 4 && text.size() != 5) return false;
     const int from = parseSquare(text.substr(0, 2));

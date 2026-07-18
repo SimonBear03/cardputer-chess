@@ -147,6 +147,7 @@ class Position {
     static std::string squareName(int square);
     static int parseSquare(std::string_view name);
     static std::string moveToUci(const Move& move);
+    std::string moveToSan(const Move& move);
     bool parseUciMove(std::string_view text, Move& result);
 
   private:

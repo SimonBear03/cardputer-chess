@@ -246,6 +246,43 @@ void testRepetition() {
                 "uncapturable en-passant sequence is a threefold draw");
 }
 
+void testSanNotation() {
+    Position start = Position::startPosition();
+    const std::string startFen = start.toFen();
+    const std::uint64_t startKey = start.key();
+    expectEqual(start.moveToSan(requireMove(start, "e2e4")), std::string("e4"),
+                "SAN formats a quiet pawn move");
+    expectEqual(start.toFen(), startFen, "SAN formatting preserves FEN");
+    expectEqual(start.key(), startKey, "SAN formatting preserves hash key");
+
+    play(start, "e2e4");
+    play(start, "e7e5");
+    expectEqual(start.moveToSan(requireMove(start, "g1f3")), std::string("Nf3"),
+                "SAN formats a quiet piece move");
+
+    Position capture = fen("4k3/8/8/3p4/4P3/8/8/4K3 w - - 0 1");
+    expectEqual(capture.moveToSan(requireMove(capture, "e4d5")), std::string("exd5"),
+                "SAN formats a pawn capture");
+
+    Position castle = fen("4k3/8/8/8/8/8/8/4K2R w K - 0 1");
+    expectEqual(castle.moveToSan(requireMove(castle, "e1g1")), std::string("O-O"),
+                "SAN formats kingside castling");
+
+    Position ambiguous = fen("4k3/8/8/8/8/8/8/1N2KN2 w - - 0 1");
+    expectEqual(ambiguous.moveToSan(requireMove(ambiguous, "b1d2")),
+                std::string("Nbd2"), "SAN disambiguates pieces by file");
+    expectEqual(ambiguous.moveToSan(requireMove(ambiguous, "f1d2")),
+                std::string("Nfd2"), "SAN disambiguates the alternate piece");
+
+    Position promotion = fen("4k3/P7/8/8/8/8/8/4K3 w - - 0 1");
+    expectEqual(promotion.moveToSan(requireMove(promotion, "a7a8q")),
+                std::string("a8=Q+"), "SAN formats promotion with check");
+
+    Position mate = fen("7k/8/5KQ1/8/8/8/8/8 w - - 0 1");
+    expectEqual(mate.moveToSan(requireMove(mate, "g6g7")), std::string("Qg7#"),
+                "SAN marks checkmate");
+}
+
 void testLevelsAndEngine() {
     expectEqual(std::string(levelConfig(0).name), std::string("Beginner"),
                 "first level name");
@@ -269,6 +306,9 @@ void testLevelsAndEngine() {
     const SearchResult book = engine.search(opening, bookLimits);
     expect(book.hasMove, "opening search returns a move");
     expect(book.fromBook, "start position uses opening book");
+    expectEqual(book.lineCount, std::uint8_t{1}, "book result exposes one PV line");
+    expect(book.lines[0].bestMove == book.bestMove,
+           "book PV line starts with returned move");
     expectEqual(opening.toFen(), openingFen, "search does not mutate caller position");
     Move parsedBook;
     expect(opening.parseUciMove(Position::moveToUci(book.bestMove), parsedBook),
@@ -307,6 +347,42 @@ void testLevelsAndEngine() {
     Move parsed;
     expect(bounded.parseUciMove(Position::moveToUci(limited.bestMove), parsed),
            "node-limited result is legal");
+
+    Position analysis = fen(
+        "r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3");
+    const std::string analysisFen = analysis.toFen();
+    const std::uint64_t analysisKey = analysis.key();
+    SearchLimits analysisLimits;
+    analysisLimits.moveTimeMs = 0;
+    analysisLimits.maxDepth = 3;
+    analysisLimits.multiPv = 3;
+    analysisLimits.useOpeningBook = true;
+    const SearchResult multiPv = engine.search(analysis, analysisLimits);
+    expect(multiPv.hasMove, "MultiPV search returns a move");
+    expect(!multiPv.fromBook, "MultiPV bypasses book to evaluate every line");
+    expectEqual(multiPv.lineCount, std::uint8_t{3}, "MultiPV returns three lines");
+    expect(multiPv.lines[0].bestMove == multiPv.bestMove,
+           "first MultiPV line is the selected best move");
+    for (std::uint8_t line = 0; line < multiPv.lineCount; ++line) {
+        Move legalLineMove;
+        expect(analysis.parseUciMove(Position::moveToUci(multiPv.lines[line].bestMove),
+                                     legalLineMove),
+               "each MultiPV candidate is legal");
+        expect(multiPv.lines[line].principalVariationLength > 0,
+               "each MultiPV candidate has a principal variation");
+        expect(multiPv.lines[line].principalVariation[0] == multiPv.lines[line].bestMove,
+               "each MultiPV line begins with its candidate move");
+        for (std::uint8_t earlier = 0; earlier < line; ++earlier) {
+            expect(!(multiPv.lines[line].bestMove == multiPv.lines[earlier].bestMove),
+                   "MultiPV candidates are unique");
+        }
+        if (line > 0) {
+            expect(multiPv.lines[line - 1].scoreCp >= multiPv.lines[line].scoreCp,
+                   "MultiPV candidates are ordered by score");
+        }
+    }
+    expectEqual(analysis.toFen(), analysisFen, "MultiPV preserves caller FEN");
+    expectEqual(analysis.key(), analysisKey, "MultiPV preserves caller hash key");
 }
 
 }  // namespace
@@ -320,6 +396,7 @@ int main() {
     testPromotion();
     testOutcomes();
     testRepetition();
+    testSanNotation();
     testLevelsAndEngine();
 
     if (failures != 0) {

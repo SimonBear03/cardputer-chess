@@ -12,6 +12,7 @@ namespace cardputer_chess {
 
 constexpr int kLevelCount = 8;
 constexpr int kMaxSearchPly = 48;
+constexpr int kMaxAnalysisLines = 3;
 
 struct LevelConfig {
     const char* name;
@@ -29,8 +30,16 @@ struct SearchLimits {
     std::uint64_t maxNodes = 0;
     std::uint16_t errorWindowCp = 0;
     std::uint8_t candidateCount = 1;
+    std::uint8_t multiPv = 1;
     std::uint64_t randomSeed = 0;
     bool useOpeningBook = true;
+};
+
+struct AnalysisLine {
+    Move bestMove{};
+    std::int16_t scoreCp = 0;
+    std::array<Move, kMaxSearchPly> principalVariation{};
+    std::uint8_t principalVariationLength = 0;
 };
 
 struct SearchResult {
@@ -44,6 +53,8 @@ struct SearchResult {
     std::uint32_t elapsedMs = 0;
     std::array<Move, kMaxSearchPly> principalVariation{};
     std::uint8_t principalVariationLength = 0;
+    std::array<AnalysisLine, kMaxAnalysisLines> lines{};
+    std::uint8_t lineCount = 0;
 };
 
 class Engine {
@@ -102,7 +113,9 @@ class Engine {
     int alphaBeta(Position& position, int depth, int ply, int alpha, int beta,
                   bool allowNull);
     int quiescence(Position& position, int ply, int alpha, int beta);
-    int searchRoot(Position& position, int depth, int alpha, int beta);
+    int searchRoot(Position& position, int depth, int alpha, int beta,
+                   const Move* excludedMoves = nullptr,
+                   std::uint8_t excludedCount = 0);
     void scoreAndSortMoves(const Position& position, MoveList& list, int ply,
                            Move hashMove);
     int moveOrderingScore(const Position& position, const Move& move, int ply,
