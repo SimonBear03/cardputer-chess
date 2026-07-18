@@ -49,7 +49,7 @@ Run all checks relevant to a change:
 ```sh
 make test
 make test-sanitize
-uvx platformio run
+uvx --with pip platformio run
 ```
 
 `make test` covers legal move generation, complete-rule behavior, perft

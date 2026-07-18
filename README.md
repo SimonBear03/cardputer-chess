@@ -46,9 +46,9 @@ Firmware validation and upload use PlatformIO without requiring a persistent
 global install:
 
 ```sh
-uvx platformio run
-uvx platformio run --target upload
-uvx platformio device monitor
+uvx --with pip platformio run
+uvx --with pip platformio run --target upload
+uvx --with pip platformio device monitor
 ```
 
 The firmware environment pins the M5Cardputer library at version 1.2.0, the
@@ -64,4 +64,6 @@ first repository release that explicitly supports the Cardputer-Adv.
 - `docs/` — architecture, validation, and hardware test checklist
 
 See [docs/architecture.md](docs/architecture.md) for boundaries and memory
-decisions.
+decisions, [docs/validation.md](docs/validation.md) for the current evidence,
+and [docs/hardware-test-checklist.md](docs/hardware-test-checklist.md) before a
+device release.
