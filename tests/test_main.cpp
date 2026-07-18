@@ -234,6 +234,16 @@ void testRepetition() {
     expect(position.isRepetition(3), "threefold repetition counter recognized");
     expectEqual(position.gameState(), GameState::DrawThreefold,
                 "threefold repetition game state");
+
+    Position uncapturableEnPassant = Position::startPosition();
+    constexpr std::array<std::string_view, 10> enPassantCycle = {
+        "g1f3", "h7h5", "f3g1", "g8f6", "g1f3",
+        "f6g8", "f3g1", "g8f6", "g1f3", "f6g8"};
+    for (const auto move : enPassantCycle) play(uncapturableEnPassant, move);
+    expect(uncapturableEnPassant.isRepetition(3),
+           "uncapturable en-passant target does not prevent repetition");
+    expectEqual(uncapturableEnPassant.gameState(), GameState::DrawThreefold,
+                "uncapturable en-passant sequence is a threefold draw");
 }
 
 void testLevelsAndEngine() {

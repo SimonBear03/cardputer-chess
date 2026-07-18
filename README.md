@@ -21,14 +21,15 @@ limits.
 
 ## Controls
 
-The printed arrow keys are `;` (up), `,` (left), `.` (down), and `/` (right).
-They work with or without `Fn`; `W/A/S/D` are aliases.
+Hold `Fn` with the printed arrow keys: `;` (up), `,` (left), `.` (down), and
+`/` (right). The same four keys also navigate without `Fn`; `W/A/S/D` are
+aliases.
 
 | Input | Action |
 | --- | --- |
 | Arrows | Move board cursor or menu selection |
 | Enter / Space | Select or confirm |
-| Backspace | Cancel selection / close chooser |
+| Backspace / Esc | Cancel selection / close chooser |
 | Tab | Open or close the in-game menu |
 | U | Undo the last human turn |
 
@@ -64,4 +65,3 @@ first repository release that explicitly supports the Cardputer-Adv.
 
 See [docs/architecture.md](docs/architecture.md) for boundaries and memory
 decisions.
-

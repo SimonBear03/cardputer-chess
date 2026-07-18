@@ -320,6 +320,12 @@ void Position::generatePseudoMoves(MoveList& list) const {
                     if (target != 0 && pieceColor(target) == them) {
                         addPawnMove(list, from, to, MoveCapture);
                     } else if (to == enPassantSquare_) {
+                        const int capturedSquare =
+                            us == Color::White ? to - 8 : to + 8;
+                        if (board_[static_cast<std::size_t>(capturedSquare)] !=
+                            makePiece(them, PieceType::Pawn)) {
+                            continue;
+                        }
                         list.push(Move{static_cast<std::uint8_t>(from),
                                        static_cast<std::uint8_t>(to), PieceType::None,
                                        static_cast<std::uint8_t>(MoveCapture | MoveEnPassant)});
@@ -457,8 +463,11 @@ bool Position::makeMove(const Move& move, Undo& undo) {
     undo.key = key_;
 
     const auto& hash = zobrist();
+    const int oldEnPassantFile = legalEnPassantFile();
     key_ ^= hash.castling[castlingRights_];
-    if (enPassantSquare_ >= 0) key_ ^= hash.enPassantFile[fileOf(enPassantSquare_)];
+    if (oldEnPassantFile >= 0) {
+        key_ ^= hash.enPassantFile[static_cast<std::size_t>(oldEnPassantFile)];
+    }
 
     int capturedSquare = move.to;
     if ((move.flags & MoveEnPassant) != 0U) {
@@ -550,7 +559,10 @@ bool Position::makeMove(const Move& move, Undo& undo) {
     sideToMove_ = opposite(sideToMove_);
     key_ ^= hash.side;
     key_ ^= hash.castling[castlingRights_];
-    if (enPassantSquare_ >= 0) key_ ^= hash.enPassantFile[fileOf(enPassantSquare_)];
+    const int newEnPassantFile = legalEnPassantFile();
+    if (newEnPassantFile >= 0) {
+        key_ ^= hash.enPassantFile[static_cast<std::size_t>(newEnPassantFile)];
+    }
     pushRepetitionKey();
 
     if (inCheck(movedColor)) {
@@ -606,7 +618,10 @@ void Position::makeNullMove(Undo& undo) {
     undo.kingSquares = kingSquares_;
     undo.key = key_;
     const auto& hash = zobrist();
-    if (enPassantSquare_ >= 0) key_ ^= hash.enPassantFile[fileOf(enPassantSquare_)];
+    const int oldEnPassantFile = legalEnPassantFile();
+    if (oldEnPassantFile >= 0) {
+        key_ ^= hash.enPassantFile[static_cast<std::size_t>(oldEnPassantFile)];
+    }
     enPassantSquare_ = -1;
     ++halfmoveClock_;
     if (sideToMove_ == Color::Black) ++fullmoveNumber_;
@@ -829,8 +844,46 @@ void Position::computeKey() {
         }
     }
     key_ ^= hash.castling[castlingRights_];
-    if (enPassantSquare_ >= 0) key_ ^= hash.enPassantFile[fileOf(enPassantSquare_)];
+    const int enPassantFile = legalEnPassantFile();
+    if (enPassantFile >= 0) {
+        key_ ^= hash.enPassantFile[static_cast<std::size_t>(enPassantFile)];
+    }
     if (sideToMove_ == Color::Black) key_ ^= hash.side;
+}
+
+int Position::legalEnPassantFile() {
+    if (enPassantSquare_ < 0) return -1;
+    const int target = enPassantSquare_;
+    const int targetFile = fileOf(target);
+    const int direction = sideToMove_ == Color::White ? 1 : -1;
+    const int sourceRank = rankOf(target) - direction;
+    const int capturedSquare = target - direction * 8;
+    if (!onBoard(capturedSquare) || board_[static_cast<std::size_t>(target)] != 0 ||
+        board_[static_cast<std::size_t>(capturedSquare)] !=
+            makePiece(opposite(sideToMove_), PieceType::Pawn)) {
+        return -1;
+    }
+
+    for (const int fileDelta : {-1, 1}) {
+        const int sourceFile = targetFile + fileDelta;
+        if (sourceFile < 0 || sourceFile >= 8 || sourceRank < 0 || sourceRank >= 8) {
+            continue;
+        }
+        const int source = sourceRank * 8 + sourceFile;
+        const Piece pawn = board_[static_cast<std::size_t>(source)];
+        if (pawn != makePiece(sideToMove_, PieceType::Pawn)) continue;
+
+        const Piece captured = board_[static_cast<std::size_t>(capturedSquare)];
+        board_[static_cast<std::size_t>(source)] = 0;
+        board_[static_cast<std::size_t>(capturedSquare)] = 0;
+        board_[static_cast<std::size_t>(target)] = pawn;
+        const bool legal = !inCheck(sideToMove_);
+        board_[static_cast<std::size_t>(target)] = 0;
+        board_[static_cast<std::size_t>(capturedSquare)] = captured;
+        board_[static_cast<std::size_t>(source)] = pawn;
+        if (legal) return targetFile;
+    }
+    return -1;
 }
 
 void Position::pushRepetitionKey() {

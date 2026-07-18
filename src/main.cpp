@@ -341,8 +341,12 @@ Action readAction() {
     }
     const auto& keys = M5Cardputer.Keyboard.keysState();
     if (keys.enter || keys.space) return Action::Confirm;
-    if (keys.del) return Action::Cancel;
+    if (keys.backspace || keys.del || keys.esc) return Action::Cancel;
     if (keys.tab) return Action::Menu;
+    if (keys.up) return Action::Up;
+    if (keys.down) return Action::Down;
+    if (keys.left) return Action::Left;
+    if (keys.right) return Action::Right;
     for (char raw : keys.word) {
         const char key = static_cast<char>(std::tolower(static_cast<unsigned char>(raw)));
         if (key == ';' || key == 'w') return Action::Up;

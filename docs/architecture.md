@@ -43,9 +43,10 @@ while the engine task is searching a private position copy.
 
 ## Controls
 
-The Cardputer prints arrow legends on the `;`, `,`, `.`, and `/` keys. The
-firmware accepts these four keys, with or without `Fn`, as Up, Left, Down, and
-Right. `W/A/S/D` are aliases for development and accessibility.
+The Cardputer prints arrow legends on the `;`, `,`, `.`, and `/` keys. With
+`Fn`, the M5Cardputer library reports dedicated arrow states; without `Fn`, it
+reports the underlying punctuation. The firmware accepts both forms as Up,
+Left, Down, and Right. `W/A/S/D` are aliases for development and accessibility.
 
 - Arrow: move cursor or menu selection
 - Enter or Space: select/confirm

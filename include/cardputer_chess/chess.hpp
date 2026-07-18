@@ -165,6 +165,7 @@ class Position {
     void generatePseudoMoves(MoveList& list) const;
     void addPawnMove(MoveList& list, int from, int to, std::uint8_t flags) const;
     void computeKey();
+    int legalEnPassantFile();
     void pushRepetitionKey();
     void popRepetitionKey();
 
@@ -174,4 +175,3 @@ class Position {
 std::uint64_t perft(Position& position, int depth);
 
 }  // namespace cardputer_chess
-
