@@ -16,8 +16,9 @@ limits.
 - Persistent Coach modes: Off, on-demand with `H`, or automatic every human turn
 - Exact top-three analysis with SAN moves, centipawn evaluations, principal
   variations, loss versus the best move, and post-move quality feedback
-- Iterative-deepening alpha-beta engine with quiescence search, transposition
-  table, pruning, positional evaluation, and compact opening book
+- Iterative-deepening alpha-beta engine with quiescence search, two-way 64 KiB
+  transposition table, selective pruning, tapered positional evaluation, and a
+  36-line compact opening book
 - Responsive dual-core firmware: the engine searches a private position on a
   background FreeRTOS task
 - Host-side perft, rule, and search tests

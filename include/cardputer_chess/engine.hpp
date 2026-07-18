@@ -106,7 +106,8 @@ class Engine {
     std::atomic<bool> stopRequested_{false};
     std::uint64_t nodes_ = 0;
     std::uint64_t maxNodes_ = 0;
-    std::uint64_t deadlineMs_ = 0;
+    std::uint32_t searchStartMs_ = 0;
+    std::uint32_t timeLimitMs_ = 0;
     bool timed_ = false;
     bool aborted_ = false;
 

@@ -94,7 +94,8 @@ Engine::Engine(std::size_t hashKilobytes) {
         std::max<std::size_t>(1, (hashKilobytes * 1024U) / sizeof(TTEntry));
     tableSize_ = 1;
     while ((tableSize_ << 1U) <= requestedEntries) tableSize_ <<= 1U;
-    tableMask_ = tableSize_ - 1U;
+    if (tableSize_ < 2) tableSize_ = 2;
+    tableMask_ = (tableSize_ >> 1U) - 1U;
     table_ = std::make_unique<TTEntry[]>(tableSize_);
     clearHash();
 }
@@ -133,7 +134,9 @@ bool Engine::shouldStop() {
         aborted_ = true;
         return true;
     }
-    if (timed_ && nowMs() >= deadlineMs_) {
+    const std::uint32_t elapsed =
+        static_cast<std::uint32_t>(nowMs()) - searchStartMs_;
+    if (timed_ && elapsed >= timeLimitMs_) {
         aborted_ = true;
         return true;
     }
@@ -154,25 +157,43 @@ int Engine::scoreFromTable(int score, int ply) {
 
 void Engine::storeHash(std::uint64_t key, int depth, int ply, int score,
                        std::uint8_t bound, Move move) {
-    TTEntry& entry = table_[static_cast<std::size_t>(key) & tableMask_];
-    const std::uint8_t entryAge = static_cast<std::uint8_t>(entry.boundAndAge >> 2U);
-    const bool replace = entry.key != key || depth >= entry.depth || entryAge != age_;
+    const std::size_t bucket = (static_cast<std::size_t>(key) & tableMask_) << 1U;
+    TTEntry* entry = &table_[bucket];
+    TTEntry* alternate = &table_[bucket + 1U];
+    if (alternate->key == key) {
+        entry = alternate;
+    } else if (entry->key != key) {
+        const std::uint8_t firstAge = static_cast<std::uint8_t>(entry->boundAndAge >> 2U);
+        const std::uint8_t secondAge =
+            static_cast<std::uint8_t>(alternate->boundAndAge >> 2U);
+        if (entry->key != 0 &&
+            (alternate->key == 0 || secondAge != age_ ||
+             (firstAge == age_ && alternate->depth < entry->depth))) {
+            entry = alternate;
+        }
+    }
+    const std::uint8_t entryAge = static_cast<std::uint8_t>(entry->boundAndAge >> 2U);
+    const bool replace = entry->key != key || depth >= entry->depth || entryAge != age_;
     if (!replace) return;
-    entry.key = key;
-    entry.move = encodeMove(move);
-    entry.score = static_cast<std::int16_t>(clampScore(scoreToTable(score, ply)));
-    entry.depth = static_cast<std::int8_t>(std::max(-1, std::min(127, depth)));
-    entry.boundAndAge = static_cast<std::uint8_t>((age_ << 2U) | (bound & 0x03U));
+    entry->key = key;
+    entry->move = encodeMove(move);
+    entry->score = static_cast<std::int16_t>(clampScore(scoreToTable(score, ply)));
+    entry->depth = static_cast<std::int8_t>(std::max(-1, std::min(127, depth)));
+    entry->boundAndAge = static_cast<std::uint8_t>((age_ << 2U) | (bound & 0x03U));
 }
 
 bool Engine::probeHash(std::uint64_t key, int depth, int ply, int alpha, int beta,
                        int& score, Move& move) const {
-    const TTEntry& entry = table_[static_cast<std::size_t>(key) & tableMask_];
-    if (entry.key != key) return false;
-    move = decodeMove(entry.move);
-    if (entry.depth < depth) return false;
-    score = scoreFromTable(entry.score, ply);
-    const std::uint8_t bound = entry.boundAndAge & 0x03U;
+    const std::size_t bucket = (static_cast<std::size_t>(key) & tableMask_) << 1U;
+    const TTEntry* entry = &table_[bucket];
+    if (entry->key != key) {
+        entry = &table_[bucket + 1U];
+        if (entry->key != key) return false;
+    }
+    move = decodeMove(entry->move);
+    if (entry->depth < depth) return false;
+    score = scoreFromTable(entry->score, ply);
+    const std::uint8_t bound = entry->boundAndAge & 0x03U;
     if (bound == kBoundExact) return true;
     if (bound == kBoundLower && score >= beta) return true;
     if (bound == kBoundUpper && score <= alpha) return true;
@@ -225,9 +246,62 @@ void Engine::scoreAndSortMoves(const Position& position, MoveList& list, int ply
 int Engine::evaluate(const Position& position) {
     std::array<int, 2> middlegame{{0, 0}};
     std::array<int, 2> endgame{{0, 0}};
+    std::array<int, 2> material{{0, 0}};
     std::array<int, 2> bishops{{0, 0}};
     std::array<std::array<int, 8>, 2> pawnsByFile{};
     int phase = 0;
+
+    const auto mobility = [&position](int square, Piece piece) {
+        const Color color = pieceColor(piece);
+        const PieceType type = pieceType(piece);
+        const int file = fileOf(square);
+        const int rank = rankOf(square);
+        int count = 0;
+        if (type == PieceType::Knight) {
+            constexpr std::array<std::array<int, 2>, 8> steps = {{{1, 2}, {2, 1},
+                                                                   {2, -1}, {1, -2},
+                                                                   {-1, -2}, {-2, -1},
+                                                                   {-2, 1}, {-1, 2}}};
+            for (const auto& step : steps) {
+                const int targetFile = file + step[0];
+                const int targetRank = rank + step[1];
+                if (targetFile < 0 || targetFile >= 8 || targetRank < 0 ||
+                    targetRank >= 8) {
+                    continue;
+                }
+                const Piece target = position.board_[static_cast<std::size_t>(
+                    targetRank * 8 + targetFile)];
+                if (target == 0 || pieceColor(target) != color) ++count;
+            }
+            return count;
+        }
+
+        constexpr std::array<std::array<int, 2>, 8> directions = {{{1, 0}, {1, 1},
+                                                                      {0, 1}, {-1, 1},
+                                                                      {-1, 0}, {-1, -1},
+                                                                      {0, -1}, {1, -1}}};
+        const int begin = type == PieceType::Bishop ? 1 : 0;
+        const int stride = type == PieceType::Queen ? 1 : 2;
+        for (int directionIndex = begin; directionIndex < 8;
+             directionIndex += stride) {
+            int targetFile = file + directions[static_cast<std::size_t>(directionIndex)][0];
+            int targetRank = rank + directions[static_cast<std::size_t>(directionIndex)][1];
+            while (targetFile >= 0 && targetFile < 8 && targetRank >= 0 &&
+                   targetRank < 8) {
+                const Piece target = position.board_[static_cast<std::size_t>(
+                    targetRank * 8 + targetFile)];
+                if (target == 0) {
+                    ++count;
+                } else {
+                    if (pieceColor(target) != color) ++count;
+                    break;
+                }
+                targetFile += directions[static_cast<std::size_t>(directionIndex)][0];
+                targetRank += directions[static_cast<std::size_t>(directionIndex)][1];
+            }
+        }
+        return count;
+    };
 
     for (int square = 0; square < 64; ++square) {
         const Piece piece = position.board_[static_cast<std::size_t>(square)];
@@ -239,6 +313,11 @@ int Engine::evaluate(const Position& position) {
         const int rank = rankOf(square);
         const int relativeRank = color == Color::White ? rank : 7 - rank;
         const int centerDistance = std::abs(file * 2 - 7) + std::abs(rank * 2 - 7);
+        const int pieceMobility = type == PieceType::Knight || type == PieceType::Bishop ||
+                                          type == PieceType::Rook ||
+                                          type == PieceType::Queen
+                                      ? mobility(square, piece)
+                                      : 0;
         int mgBonus = 0;
         int egBonus = 0;
 
@@ -251,19 +330,27 @@ int Engine::evaluate(const Position& position) {
             case PieceType::Knight:
                 mgBonus = 34 - centerDistance * 5 - (relativeRank == 0 ? 12 : 0);
                 egBonus = 22 - centerDistance * 3;
+                mgBonus += pieceMobility * 4;
+                egBonus += pieceMobility * 3;
                 break;
             case PieceType::Bishop:
                 mgBonus = 26 - centerDistance * 3 + relativeRank * 2;
                 egBonus = 20 - centerDistance * 2;
+                mgBonus += pieceMobility * 3;
+                egBonus += pieceMobility * 3;
                 ++bishops[static_cast<std::size_t>(side)];
                 break;
             case PieceType::Rook:
                 mgBonus = relativeRank == 6 ? 18 : 0;
                 egBonus = 8 - std::abs(file * 2 - 7);
+                mgBonus += pieceMobility * 2;
+                egBonus += pieceMobility * 3;
                 break;
             case PieceType::Queen:
                 mgBonus = 12 - centerDistance;
                 egBonus = 18 - centerDistance * 2;
+                mgBonus += pieceMobility;
+                egBonus += pieceMobility * 2;
                 break;
             case PieceType::King:
                 mgBonus = -32 + centerDistance * 4;
@@ -279,6 +366,10 @@ int Engine::evaluate(const Position& position) {
             kPieceValue[static_cast<std::size_t>(type)] + mgBonus;
         endgame[static_cast<std::size_t>(side)] +=
             kEndgameValue[static_cast<std::size_t>(type)] + egBonus;
+        if (type != PieceType::King) {
+            material[static_cast<std::size_t>(side)] +=
+                kPieceValue[static_cast<std::size_t>(type)];
+        }
         phase += kPhaseWeight[static_cast<std::size_t>(type)];
     }
 
@@ -311,12 +402,81 @@ int Engine::evaluate(const Position& position) {
 
     for (int square = 0; square < 64; ++square) {
         const Piece piece = position.board_[static_cast<std::size_t>(square)];
-        if (pieceType(piece) != PieceType::Pawn) continue;
+        const PieceType type = pieceType(piece);
+        if (type == PieceType::Rook) {
+            const int side = colorIndex(pieceColor(piece));
+            const int file = fileOf(square);
+            if (pawnsByFile[static_cast<std::size_t>(side)]
+                           [static_cast<std::size_t>(file)] == 0) {
+                middlegame[static_cast<std::size_t>(side)] += 12;
+                endgame[static_cast<std::size_t>(side)] += 8;
+                if (pawnsByFile[static_cast<std::size_t>(1 - side)]
+                               [static_cast<std::size_t>(file)] == 0) {
+                    middlegame[static_cast<std::size_t>(side)] += 10;
+                    endgame[static_cast<std::size_t>(side)] += 8;
+                }
+            }
+            continue;
+        }
+        if (type == PieceType::Knight) {
+            const Color color = pieceColor(piece);
+            const int side = colorIndex(color);
+            const int file = fileOf(square);
+            const int rank = rankOf(square);
+            const int relativeRank = color == Color::White ? rank : 7 - rank;
+            const int pawnSourceRank = rank + (color == Color::White ? -1 : 1);
+            bool protectedByPawn = false;
+            if (pawnSourceRank >= 0 && pawnSourceRank < 8) {
+                for (int sourceFile : {file - 1, file + 1}) {
+                    if (sourceFile >= 0 && sourceFile < 8 &&
+                        position.board_[static_cast<std::size_t>(pawnSourceRank * 8 +
+                                                                 sourceFile)] ==
+                            makePiece(color, PieceType::Pawn)) {
+                        protectedByPawn = true;
+                    }
+                }
+            }
+            bool canBeChased = false;
+            for (int enemyFile : {file - 1, file + 1}) {
+                if (enemyFile < 0 || enemyFile >= 8) continue;
+                for (int enemyRank = rank; enemyRank >= 0 && enemyRank < 8;
+                     enemyRank += color == Color::White ? 1 : -1) {
+                    if (position.board_[static_cast<std::size_t>(enemyRank * 8 +
+                                                                 enemyFile)] ==
+                        makePiece(opposite(color), PieceType::Pawn)) {
+                        canBeChased = true;
+                    }
+                }
+            }
+            if (relativeRank >= 3 && protectedByPawn && !canBeChased) {
+                middlegame[static_cast<std::size_t>(side)] += 18;
+                endgame[static_cast<std::size_t>(side)] += 10;
+            }
+            continue;
+        }
+        if (type != PieceType::Pawn) continue;
         const Color color = pieceColor(piece);
         const int side = colorIndex(color);
         const int file = fileOf(square);
         const int rank = rankOf(square);
         const int direction = color == Color::White ? 1 : -1;
+        bool connected = false;
+        for (int adjacentFile : {file - 1, file + 1}) {
+            if (adjacentFile < 0 || adjacentFile >= 8) continue;
+            for (int adjacentRank : {rank, rank - direction}) {
+                if (adjacentRank >= 0 && adjacentRank < 8 &&
+                    position.board_[static_cast<std::size_t>(adjacentRank * 8 +
+                                                             adjacentFile)] ==
+                        makePiece(color, PieceType::Pawn)) {
+                    connected = true;
+                }
+            }
+        }
+        if (connected) {
+            const int relativeRank = color == Color::White ? rank : 7 - rank;
+            middlegame[static_cast<std::size_t>(side)] += 3 + relativeRank * 2;
+            endgame[static_cast<std::size_t>(side)] += 4 + relativeRank * 2;
+        }
         bool passed = true;
         for (int targetFile = std::max(0, file - 1); targetFile <= std::min(7, file + 1);
              ++targetFile) {
@@ -352,6 +512,21 @@ int Engine::evaluate(const Position& position) {
         }
     }
 
+    if (phase <= 6 && std::abs(material[0] - material[1]) >= 200) {
+        const int winningSide = material[0] > material[1] ? 0 : 1;
+        const int losingSide = 1 - winningSide;
+        const int winningKing =
+            position.kingSquares_[static_cast<std::size_t>(winningSide)];
+        const int losingKing = position.kingSquares_[static_cast<std::size_t>(losingSide)];
+        const int edgeDistance =
+            std::max(std::abs(fileOf(losingKing) * 2 - 7),
+                     std::abs(rankOf(losingKing) * 2 - 7));
+        const int kingDistance = std::abs(fileOf(winningKing) - fileOf(losingKing)) +
+                                 std::abs(rankOf(winningKing) - rankOf(losingKing));
+        endgame[static_cast<std::size_t>(winningSide)] +=
+            edgeDistance * 6 + (14 - kingDistance) * 3;
+    }
+
     phase = std::min(24, phase);
     const int mgScore = middlegame[0] - middlegame[1];
     const int egScore = endgame[0] - endgame[1];
@@ -371,8 +546,9 @@ int Engine::quiescence(Position& position, int ply, int alpha, int beta) {
 
     const bool inCheck = position.inCheck(position.sideToMove_);
     int best = -kInfinity;
+    int standPat = -kInfinity;
     if (!inCheck) {
-        const int standPat = evaluate(position);
+        standPat = evaluate(position);
         best = standPat;
         if (standPat >= beta) return beta;
         if (standPat > alpha) alpha = standPat;
@@ -388,6 +564,15 @@ int Engine::quiescence(Position& position, int ply, int alpha, int beta) {
     for (std::uint16_t index = 0; index < moves.size; ++index) {
         const Move move = moves[index];
         if (!inCheck && !move.isCapture() && !move.isPromotion()) continue;
+        if (!inCheck && move.isCapture() && !move.isPromotion()) {
+            Piece captured = position.board_[move.to];
+            if ((move.flags & MoveEnPassant) != 0U) {
+                captured = makePiece(opposite(position.sideToMove_), PieceType::Pawn);
+            }
+            const int optimisticGain =
+                kPieceValue[static_cast<std::size_t>(pieceType(captured))] + 180;
+            if (standPat + optimisticGain <= alpha) continue;
+        }
         Undo undo;
         if (!position.makeMove(move, undo)) continue;
         const int score = -quiescence(position, ply + 1, -beta, -alpha);
@@ -425,6 +610,12 @@ int Engine::alphaBeta(Position& position, int depth, int ply, int alpha, int bet
     }
 
     const int staticEval = evaluate(position);
+    if (!inCheck && depth <= 3 && beta - alpha == 1 &&
+        std::abs(beta) < kMateThreshold &&
+        position.hasNonPawnMaterial(position.sideToMove_) &&
+        staticEval - depth * 100 >= beta) {
+        return staticEval;
+    }
     if (allowNull && depth >= 3 && !inCheck && staticEval >= beta &&
         position.hasNonPawnMaterial(position.sideToMove_)) {
         Undo undo;
@@ -526,8 +717,15 @@ int Engine::searchRoot(Position& position, int depth, int alpha, int beta,
         return position.inCheck(position.sideToMove_) ? -kMateScore : 0;
     }
     Move hashMove{};
-    const TTEntry& rootEntry = table_[static_cast<std::size_t>(position.key_) & tableMask_];
-    if (rootEntry.key == position.key_) hashMove = decodeMove(rootEntry.move);
+    const std::size_t rootBucket =
+        (static_cast<std::size_t>(position.key_) & tableMask_) << 1U;
+    const TTEntry& firstRootEntry = table_[rootBucket];
+    const TTEntry& secondRootEntry = table_[rootBucket + 1U];
+    if (firstRootEntry.key == position.key_) {
+        hashMove = decodeMove(firstRootEntry.move);
+    } else if (secondRootEntry.key == position.key_) {
+        hashMove = decodeMove(secondRootEntry.move);
+    }
     scoreAndSortMoves(position, moves, 0, hashMove);
 
     const int originalAlpha = alpha;
@@ -597,7 +795,7 @@ int Engine::searchRoot(Position& position, int depth, int alpha, int beta,
 void Engine::initializeBook() {
     if (bookInitialized_) return;
     bookInitialized_ = true;
-    static constexpr std::array<std::string_view, 20> lines = {{
+    static constexpr std::array<std::string_view, 36> lines = {{
         "e2e4 e7e5 g1f3 b8c6 f1b5 a7a6 b5a4 g8f6 e1g1 f8e7",
         "e2e4 e7e5 g1f3 b8c6 f1c4 g8f6 d2d3 f8c5 e1g1",
         "e2e4 c7c5 g1f3 d7d6 d2d4 c5d4 f3d4 g8f6 b1c3",
@@ -618,6 +816,22 @@ void Engine::initializeBook() {
         "d2d4 d7d5 c1f4 g8f6 e2e3 c7c5",
         "e2e4 d7d5 e4d5 d8d5 b1c3 d5d8",
         "c2c4 g8f6 b1c3 e7e5 g1f3 b8c6",
+        "e2e4 e7e5 g1f3 b8c6 f1b5 g8f6 e1g1 f6e4 d2d4 e4d6",
+        "e2e4 e7e5 g1f3 b8c6 f1b5 a7a6 b5c6 d7c6 e1g1",
+        "e2e4 e7e5 g1f3 b8c6 d2d4 e5d4 f3d4 g8f6",
+        "e2e4 e7e5 g1f3 g8f6 f3e5 d7d6 e5f3 f6e4",
+        "e2e4 e7e5 b1c3 g8f6 f2f4 d7d5 f4e5 f6e4",
+        "e2e4 c7c5 g1f3 d7d6 d2d4 c5d4 f3d4 g8f6 b1c3 a7a6",
+        "e2e4 c7c5 g1f3 d7d6 d2d4 c5d4 f3d4 g8f6 b1c3 g7g6",
+        "e2e4 e7e6 d2d4 d7d5 e4e5 c7c5 c2c3 b8c6 g1f3",
+        "e2e4 c7c6 d2d4 d7d5 b1c3 d5e4 c3e4 c8f5",
+        "d2d4 d7d5 c2c4 c7c6 g1f3 g8f6",
+        "d2d4 d7d5 c2c4 e7e6 b1c3 g8f6 c1g5 f8e7",
+        "d2d4 g8f6 c2c4 e7e6 g2g3 d7d5",
+        "d2d4 g8f6 c2c4 e7e6 b1c3 f8b4 e2e3 e8g8",
+        "d2d4 g8f6 c2c4 g7g6 g1f3 f8g7 b1c3 d7d6",
+        "d2d4 g8f6 c2c4 g7g6 b1c3 d7d5 c4d5 f6d5",
+        "c2c4 e7e5 b1c3 g8f6 g1f3 b8c6 d2d4 e5d4",
     }};
 
     for (std::string_view line : lines) {
@@ -697,9 +911,15 @@ SearchResult Engine::search(const Position& rootPosition, const SearchLimits& li
     nodes_ = 0;
     maxNodes_ = limits.maxNodes;
     timed_ = limits.moveTimeMs > 0;
-    deadlineMs_ = start + limits.moveTimeMs;
+    searchStartMs_ = static_cast<std::uint32_t>(start);
+    timeLimitMs_ = limits.moveTimeMs;
     completedRootMoveCount_ = 0;
     age_ = static_cast<std::uint8_t>((age_ + 1U) & 0x3FU);
+    for (auto& color : history_) {
+        for (auto& from : color) {
+            for (std::int16_t& score : from) score = static_cast<std::int16_t>(score / 2);
+        }
+    }
 
     MoveList legal;
     position.generateLegalMoves(legal);
@@ -787,7 +1007,12 @@ SearchResult Engine::search(const Position& rootPosition, const SearchLimits& li
         result.lines = depthLines;
         result.lineCount = requestedLines;
         if (std::abs(previousScore) > kMateThreshold) break;
-        if (timed_ && nowMs() + 5 >= deadlineMs_) break;
+        const std::uint32_t elapsed =
+            static_cast<std::uint32_t>(nowMs()) - searchStartMs_;
+        if (timed_ &&
+            (timeLimitMs_ <= 5U || elapsed >= static_cast<std::uint32_t>(timeLimitMs_ - 5U))) {
+            break;
+        }
     }
 
     if (!result.hasMove) {

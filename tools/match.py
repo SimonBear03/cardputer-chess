@@ -22,6 +22,14 @@ OPENINGS = (
     "d2d4 g8f6 c2c4 g7g6",
     "c2c4 e7e5 b1c3 g8f6",
     "g1f3 d7d5 d2d4 g8f6",
+    "e2e4 e7e5 f2f4 e5f4",
+    "e2e4 d7d5 e4d5 d8d5",
+    "d2d4 f7f5 g2g3 g8f6",
+    "b2b3 e7e5 c1b2 b8c6",
+    "g1f3 g8f6 c2c4 g7g6",
+    "c2c4 c7c5 g1f3 g8f6",
+    "d2d4 g8f6 c2c4 e7e6",
+    "g1f3 d7d5 c2c4 e7e6",
 )
 
 
@@ -35,6 +43,7 @@ def parse_args() -> argparse.Namespace:
         default="uci",
     )
     parser.add_argument("--depth", type=int, default=5)
+    parser.add_argument("--movetime-ms", type=int, default=0)
     parser.add_argument("--opening-pairs", type=int, default=len(OPENINGS))
     parser.add_argument("--max-plies", type=int, default=160)
     parser.add_argument("--trace", action="store_true")
@@ -123,6 +132,7 @@ def play_game(
     cardputer_white: bool,
     opening: str,
     depth: int,
+    movetime_ms: int,
     max_plies: int,
     trace: bool,
 ) -> tuple[chess.Outcome | None, chess.Board]:
@@ -137,11 +147,16 @@ def play_game(
         if outcome is not None:
             return outcome, board
         cardputer_turn = board.turn == (chess.WHITE if cardputer_white else chess.BLACK)
+        limit = (
+            chess.engine.Limit(time=movetime_ms / 1000.0)
+            if movetime_ms > 0
+            else chess.engine.Limit(depth=depth)
+        )
         if cardputer_turn:
             if trace:
                 print(f"requesting Cardputer move at ply={len(board.move_stack)}", flush=True)
             result = cardputer.play(
-                board, chess.engine.Limit(depth=depth), game=game_token
+                board, limit, game=game_token
             )
             if result.move is None or result.move not in board.legal_moves:
                 raise RuntimeError(
@@ -160,7 +175,7 @@ def play_game(
                 print(f"ply={len(board.move_stack)} opponent={move.uci()}", flush=True)
         else:
             result = opponent.play(
-                board, chess.engine.Limit(depth=depth), game=game_token
+                board, limit, game=game_token
             )
             if result.move is None or result.move not in board.legal_moves:
                 raise RuntimeError(
@@ -177,6 +192,9 @@ def play_game(
 
 def main() -> int:
     args = parse_args()
+    if args.movetime_ms > 0 and args.opponent_protocol.startswith("xboard-force"):
+        parser_message = "--movetime-ms currently requires a UCI/setboard opponent"
+        raise SystemExit(parser_message)
     if args.trace:
         logging.basicConfig(level=logging.DEBUG)
     if args.trace:
@@ -207,6 +225,7 @@ def main() -> int:
                     cardputer_white,
                     opening,
                     args.depth,
+                    args.movetime_ms,
                     args.max_plies,
                     args.trace,
                 )

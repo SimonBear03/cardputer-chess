@@ -39,6 +39,15 @@ bounds as evaluations. `coach.hpp` and `coach.cpp` classify a played candidate
 without pretending that an unsearched move has an exact score. These modules
 have no display or keyboard dependencies.
 
+The fixed 64 KiB transposition table is two-way associative to reduce
+destructive collisions without increasing RAM. Search combines null move,
+late-move reduction, shallow reverse futility, delta-pruned quiescence, killer
+moves, and decaying history scores. Evaluation is tapered between middlegame
+and endgame and includes mobility, bishop pair, pawn structure, passed and
+connected pawns, rook files, protected knight outposts, king shelter, and a
+small conversion term that drives a materially losing king toward the edge.
+The 36 vetted opening lines compile into 163 unique position/move entries.
+
 ### Cardputer application
 
 `src/main.cpp` owns the setup menu, persisted level/color/Coach preferences, board
@@ -88,6 +97,10 @@ and controlled root-move error. Maximum always chooses the best completed root
 move and receives the largest time budget. Lower levels sometimes choose a
 plausible inferior candidate so they remain meaningfully beatable rather than
 merely fast.
+
+Timed search compares unsigned elapsed milliseconds instead of an absolute
+deadline, so the ESP32's 32-bit `millis()` rollover cannot create a runaway
+search after roughly 49 days of uptime.
 
 ## Correctness strategy
 

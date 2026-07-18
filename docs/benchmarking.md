@@ -48,6 +48,9 @@ uv run --with python-chess tools/match.py \
   --opponent-protocol xboard-force --depth 5
 ```
 
+For UCI-versus-UCI A/B tests, `--movetime-ms 100` replaces the fixed-depth
+limit and measures whether a more expensive evaluation earns back its CPU cost.
+
 The Fairy-Max hash exponent `12` is approximately a 48 KiB table, keeping the
 comparison close to Cardputer Chess's 64 KiB transposition table. External
 engines and their data files are benchmark inputs only and are not vendored.
@@ -81,3 +84,20 @@ Fairy-Max is benchmarked as the public-domain micro-Max family candidate. TSCP
 is benchmarked unmodified from the author's archive; its
 [license requires permission](https://www.tckerrigan.com/Chess/TSCP/) to copy
 or create a derivative, so none of its code is included here.
+
+## Optimized-engine result
+
+The accepted optimization pass added mobility and structure evaluation,
+delta/reverse-futility pruning, history decay, a two-way table using the same
+64 KiB, an endgame conversion term, and broader book coverage. The final node
+suite is:
+
+| Budget per position | Stockfish top-three points | Fingerprint |
+| --- | ---: | --- |
+| 100,000 nodes | 27 / 36 | `0x64cca8e1e511d1fc` |
+| 500,000 nodes | 30 / 36 | `0xd3759863bcc95aaf` |
+
+Against the saved original `afe3bdc` engine, the final candidate scored 17
+wins, 14 draws, and 1 loss over 32 paired games at an equal 50 ms per move:
+**24/32, or 75.0%**. A bishop-development bonus and other intermediate ideas
+were rejected when they reduced oracle or match results.

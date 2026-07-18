@@ -315,6 +315,18 @@ void testLevelsAndEngine() {
     expect(opening.parseUciMove(Position::moveToUci(book.bestMove), parsedBook),
            "book move is legal");
 
+    Position berlin = Position::startPosition();
+    for (std::string_view move : {"e2e4", "e7e5", "g1f3", "b8c6", "f1b5",
+                                  "g8f6"}) {
+        play(berlin, move);
+    }
+    const SearchResult berlinBook = engine.search(berlin, bookLimits);
+    expect(berlinBook.fromBook, "expanded opening book reaches the Berlin position");
+    expectEqual(Position::moveToUci(berlinBook.bestMove), std::string("e1g1"),
+                "expanded opening book follows the vetted Berlin mainline");
+    expectEqual(berlinBook.lineCount, std::uint8_t{1},
+                "expanded book result exposes one PV line");
+
     Position mateInOne = fen("7k/8/5KQ1/8/8/8/8/8 w - - 0 1");
     SearchLimits tactical;
     tactical.moveTimeMs = 0;

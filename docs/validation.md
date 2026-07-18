@@ -12,7 +12,7 @@ Run:
 make test
 ```
 
-Current result: **204 assertions pass**. The suite includes the six standard
+Current result: **213 assertions pass**. The suite includes the six standard
 perft positions, with start position and endgame coverage extended to depth 4.
 It also covers:
 
@@ -23,6 +23,7 @@ It also covers:
 - all four promotions
 - checkmate, stalemate, fifty-move, threefold-repetition, and dead-position draws
 - level monotonicity, opening-book legality, mate-in-one search, and bounded stop
+- expanded-book coverage through a Berlin Defense mainline
 - SAN notation, including capture, disambiguation, castling, promotion, check,
   and checkmate
 - exact three-line MultiPV legality, uniqueness, order, PV shape, and caller
@@ -35,7 +36,7 @@ Run the same suite with memory and undefined-behavior instrumentation:
 make test-sanitize
 ```
 
-Current result: **204 assertions pass under AddressSanitizer and UBSan**.
+Current result: **213 assertions pass under AddressSanitizer and UBSan**.
 LeakSanitizer is disabled because it requires ptrace support that is unavailable
 in some sandboxed runners.
 
@@ -52,7 +53,7 @@ The validated toolchain uses PlatformIO Core 6.1.19, Espressif32 platform
 release build succeeds for the ESP32-S3FN8 target with:
 
 - Static RAM: 171,860 / 327,680 bytes (52.4%)
-- Flash image: 549,393 / 3,342,336 bytes (16.4%)
+- Flash image: 551,809 / 3,342,336 bytes (16.5%)
 - Output: `.pio/build/cardputer-adv/firmware.bin`
 
 The 64 KiB transposition table is allocated once at runtime and is therefore
