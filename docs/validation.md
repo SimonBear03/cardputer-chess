@@ -12,7 +12,7 @@ Run:
 make test
 ```
 
-Current result: **164 assertions pass**. The suite includes the six standard
+Current result: **204 assertions pass**. The suite includes the six standard
 perft positions, with start position and endgame coverage extended to depth 4.
 It also covers:
 
@@ -23,6 +23,11 @@ It also covers:
 - all four promotions
 - checkmate, stalemate, fifty-move, threefold-repetition, and dead-position draws
 - level monotonicity, opening-book legality, mate-in-one search, and bounded stop
+- SAN notation, including capture, disambiguation, castling, promotion, check,
+  and checkmate
+- exact three-line MultiPV legality, uniqueness, order, PV shape, and caller
+  position identity
+- Coach mode naming and honest move-quality classification
 
 Run the same suite with memory and undefined-behavior instrumentation:
 
@@ -30,7 +35,7 @@ Run the same suite with memory and undefined-behavior instrumentation:
 make test-sanitize
 ```
 
-Current result: **164 assertions pass under AddressSanitizer and UBSan**.
+Current result: **204 assertions pass under AddressSanitizer and UBSan**.
 LeakSanitizer is disabled because it requires ptrace support that is unavailable
 in some sandboxed runners.
 
@@ -46,14 +51,15 @@ The validated toolchain uses PlatformIO Core 6.1.19, Espressif32 platform
 6.12.0, Arduino-ESP32 2.0.17, and the M5Cardputer Git tag 1.2.0. The current
 release build succeeds for the ESP32-S3FN8 target with:
 
-- Static RAM: 161,588 / 327,680 bytes (49.3%)
-- Flash image: 535,709 / 3,342,336 bytes (16.0%)
+- Static RAM: 171,860 / 327,680 bytes (52.4%)
+- Flash image: 549,393 / 3,342,336 bytes (16.4%)
 - Output: `.pio/build/cardputer-adv/firmware.bin`
 
 The 64 KiB transposition table is allocated once at runtime and is therefore
 not included in PlatformIO's static-RAM figure. Search uses a fixed 16 KiB
 FreeRTOS task stack and fixed-capacity working arrays; it does not allocate in
-the recursive search path.
+the recursive search path. Opponent and Coach analysis share the same engine
+and task rather than allocating a second search instance.
 
 ## Independent cross-check
 
@@ -64,6 +70,7 @@ caught two mistyped test positions before they entered the baseline.
 ## Remaining hardware boundary
 
 No Cardputer-Adv USB device is attached to the build host, so flashing, key
-feel, LCD legibility, sustained maximum-level searches, battery draw, and
+feel, LCD and Coach-overlay legibility, sustained maximum-level/MultiPV
+searches, battery draw, and
 thermals are not claimed as physically validated. Follow
 [hardware-test-checklist.md](hardware-test-checklist.md) on the device.

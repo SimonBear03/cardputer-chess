@@ -6,6 +6,7 @@
 #include <esp_system.h>
 
 #include "cardputer_chess/chess.hpp"
+#include "cardputer_chess/coach.hpp"
 #include "cardputer_chess/engine.hpp"
 
 #include <algorithm>
@@ -31,7 +32,7 @@ constexpr std::uint16_t kCheckSquare = 0xF986;
 constexpr std::uint16_t kPanelColor = 0x10A2;
 constexpr std::uint16_t kAccent = 0x2E7F;
 
-enum class Screen : std::uint8_t { Setup, Playing, Promotion, Pause, GameOver };
+enum class Screen : std::uint8_t { Setup, Playing, Promotion, Coach, Pause, GameOver };
 enum class Action : std::uint8_t {
     None,
     Up,
@@ -42,12 +43,15 @@ enum class Action : std::uint8_t {
     Cancel,
     Menu,
     Undo,
+    Coach,
 };
 enum class SideChoice : std::uint8_t { White, Black, Random };
+enum class SearchPurpose : std::uint8_t { Opponent, Coach };
 
 struct GameRecord {
     Move move{};
     Undo undo{};
+    std::array<char, 12> san{};
 };
 
 Preferences preferences;
@@ -60,6 +64,7 @@ Screen screen = Screen::Setup;
 SideChoice sideChoice = SideChoice::White;
 Color humanColor = Color::White;
 int levelIndex = 3;
+CoachMode coachMode = CoachMode::OnDemand;
 int setupRow = 0;
 int pauseRow = 0;
 int cursorSquare = 12;
@@ -70,15 +75,24 @@ GameState outcome = GameState::Ongoing;
 Move lastMove{};
 bool hasLastMove = false;
 SearchResult lastSearch{};
+SearchResult coachAnalysis{};
+CoachFeedback coachFeedback{};
+std::uint64_t coachAnalysisKey = 0;
+std::uint8_t coachLineIndex = 0;
 
 Position searchPosition = Position::startPosition();
 SearchResult taskResult{};
+SearchLimits taskLimits{};
+SearchPurpose searchPurpose = SearchPurpose::Opponent;
+SearchPurpose taskResultPurpose = SearchPurpose::Opponent;
 TaskHandle_t searchTaskHandle = nullptr;
 portMUX_TYPE resultMutex = portMUX_INITIALIZER_UNLOCKED;
 volatile bool searchRunning = false;
 volatile bool searchDone = false;
 bool discardSearch = false;
 bool pendingUndo = false;
+bool pendingOpponentSearch = false;
+bool openCoachWhenReady = false;
 bool engineLaunchFailed = false;
 std::uint64_t gameSeed = 0;
 std::uint64_t searchRootKey = 0;
@@ -93,6 +107,56 @@ const char* sideChoiceName(SideChoice choice) {
         case SideChoice::Random: return "Random";
     }
     return "White";
+}
+
+bool opponentSearchRunning() {
+    return searchRunning && searchPurpose == SearchPurpose::Opponent;
+}
+
+bool coachSearchRunning() {
+    return searchRunning && searchPurpose == SearchPurpose::Coach;
+}
+
+bool coachAnalysisCurrent() {
+    return coachAnalysis.hasMove && coachAnalysis.lineCount > 0 &&
+           coachAnalysisKey == game.key() && game.sideToMove() == humanColor;
+}
+
+void cycleCoachMode(int direction) {
+    int value = static_cast<int>(coachMode);
+    value = (value + (direction < 0 ? 2 : 1)) % 3;
+    coachMode = static_cast<CoachMode>(value);
+}
+
+void formatScore(std::int16_t scoreCp, char* output, std::size_t outputSize) {
+    const int score = scoreCp;
+    if (score > 29000) {
+        std::snprintf(output, outputSize, "+Mate");
+        return;
+    }
+    if (score < -29000) {
+        std::snprintf(output, outputSize, "-Mate");
+        return;
+    }
+    const int absolute = score < 0 ? -score : score;
+    std::snprintf(output, outputSize, "%c%d.%02d", score >= 0 ? '+' : '-',
+                  absolute / 100, absolute % 100);
+}
+
+std::string principalVariationText(const AnalysisLine& line) {
+    Position position = game;
+    std::string text;
+    const std::uint8_t length = std::min<std::uint8_t>(line.principalVariationLength, 4);
+    for (std::uint8_t index = 0; index < length; ++index) {
+        const Move move = line.principalVariation[index];
+        const std::string san = position.moveToSan(move);
+        if (!text.empty()) text.push_back(' ');
+        if (text.size() + san.size() > 27) break;
+        text += san;
+        Undo undo;
+        if (!position.makeMove(move, undo)) break;
+    }
+    return text;
 }
 
 const char* outcomeName(GameState state) {
@@ -211,8 +275,10 @@ void drawPanel() {
                   levelConfig(levelIndex).name);
     drawText(kPanelX + 4, 30, line, 0xFFE0, 1);
 
-    if (searchRunning) {
+    if (opponentSearchRunning()) {
         drawText(kPanelX + 4, 44, "Thinking...", 0x07FF, 1);
+    } else if (coachSearchRunning()) {
+        drawText(kPanelX + 4, 44, "Coach thinking", 0x07FF, 1);
     } else if (engineLaunchFailed) {
         drawText(kPanelX + 4, 44, "ENGINE ERROR", TFT_RED, 1);
     } else if (outcome != GameState::Ongoing) {
@@ -224,11 +290,16 @@ void drawPanel() {
     }
 
     if (hasLastMove) {
-        const std::string uci = Position::moveToUci(lastMove);
-        std::snprintf(line, sizeof(line), "Last %s", uci.c_str());
+        std::snprintf(line, sizeof(line), "Last %s", records[recordCount - 1U].san.data());
         drawText(kPanelX + 4, 57, line, TFT_WHITE, 1);
     }
-    if (lastSearch.hasMove && !lastSearch.fromBook) {
+    if (coachFeedback.quality != MoveQuality::Unavailable) {
+        std::snprintf(line, sizeof(line), "Coach %s",
+                      moveQualityName(coachFeedback.quality));
+        const bool warning = coachFeedback.quality == MoveQuality::Inaccuracy ||
+                             coachFeedback.quality == MoveQuality::OutsideTopThree;
+        drawText(kPanelX + 4, 69, line, warning ? 0xFD20 : 0x07E0, 1);
+    } else if (lastSearch.hasMove && !lastSearch.fromBook) {
         std::snprintf(line, sizeof(line), "d%u  %llu kn", lastSearch.completedDepth,
                       static_cast<unsigned long long>(lastSearch.nodes / 1000U));
         drawText(kPanelX + 4, 69, line, 0xBDF7, 1);
@@ -239,13 +310,13 @@ void drawPanel() {
     int historyY = 82;
     const int first = recordCount > 3 ? static_cast<int>(recordCount) - 3 : 0;
     for (int index = first; index < static_cast<int>(recordCount); ++index) {
-        const std::string move = Position::moveToUci(records[static_cast<std::size_t>(index)].move);
-        std::snprintf(line, sizeof(line), "%d. %s", index + 1, move.c_str());
+        const auto& record = records[static_cast<std::size_t>(index)];
+        std::snprintf(line, sizeof(line), "%d. %s", index + 1, record.san.data());
         drawText(kPanelX + 4, historyY, line, 0xC618, 1);
         historyY += 10;
     }
-    drawText(kPanelX + 4, 116, "TAB menu", 0x8410, 1);
-    drawText(kPanelX + 4, 126, "U undo", 0x8410, 1);
+    drawText(kPanelX + 4, 116, "H coach", 0x8410, 1);
+    drawText(kPanelX + 4, 126, "TAB menu U undo", 0x8410, 1);
 }
 
 void drawGame() {
@@ -259,9 +330,10 @@ void drawSetup() {
     drawText(12, 8, "CARDPUTER CHESS", kAccent, 2);
     drawText(12, 30, "Offline ESP32 chess", 0xBDF7, 1);
 
-    const std::array<const char*, 3> labels = {"Play as", "Level", "Start game"};
-    for (int row = 0; row < 3; ++row) {
-        const int y = 52 + row * 23;
+    const std::array<const char*, 4> labels = {"Play as", "Level", "Coach",
+                                               "Start game"};
+    for (int row = 0; row < 4; ++row) {
+        const int y = 46 + row * 21;
         if (setupRow == row) {
             M5Cardputer.Display.fillRoundRect(8, y - 4, 224, 20, 4, 0x2945);
             drawText(12, y, ">", TFT_CYAN, 1);
@@ -274,11 +346,13 @@ void drawSetup() {
             std::snprintf(value, sizeof(value), "%d %s", levelIndex + 1,
                           levelConfig(levelIndex).name);
             drawText(126, y, value, 0xFFE0, 1);
+        } else if (row == 2) {
+            drawText(126, y, coachModeName(coachMode), 0xFFE0, 1);
         } else {
             drawText(126, y, "ENTER", 0x07E0, 1);
         }
     }
-    drawText(12, 124, "Arrows move  Enter select", 0x8410, 1);
+    drawText(12, 128, "Arrows move  Enter select", 0x8410, 1);
 }
 
 void drawPromotion() {
@@ -296,12 +370,69 @@ void drawPromotion() {
     }
 }
 
+void drawCoach() {
+    drawGame();
+    M5Cardputer.Display.fillRoundRect(16, 14, 208, 108, 6, 0x2104);
+    M5Cardputer.Display.drawRoundRect(16, 14, 208, 108, 6, TFT_CYAN);
+    drawText(26, 21, "COACH", kAccent, 2);
+    drawText(119, 23, coachModeName(coachMode), 0xBDF7, 1);
+
+    if (coachSearchRunning()) {
+        drawText(28, 51, "Analyzing top three...", TFT_WHITE, 1);
+        drawText(28, 68, "Close and keep playing", 0xBDF7, 1);
+        drawText(28, 102, "H / ESC close", 0x8410, 1);
+        return;
+    }
+    if (!coachAnalysisCurrent()) {
+        drawText(28, 52,
+                 coachMode == CoachMode::Off ? "Coach is disabled" :
+                                               "No analysis for this turn",
+                 TFT_WHITE, 1);
+        drawText(28, 70,
+                 coachMode == CoachMode::Off ? "Enable it in TAB menu" :
+                                               "Press H to analyze",
+                 0xBDF7, 1);
+        drawText(28, 102, "H / ESC close", 0x8410, 1);
+        return;
+    }
+
+    coachLineIndex = std::min<std::uint8_t>(
+        coachLineIndex, static_cast<std::uint8_t>(coachAnalysis.lineCount - 1U));
+    const AnalysisLine& line = coachAnalysis.lines[coachLineIndex];
+    const std::string san = game.moveToSan(line.bestMove);
+    char score[12];
+    formatScore(line.scoreCp, score, sizeof(score));
+    char summary[36];
+    std::snprintf(summary, sizeof(summary), "%u/%u  %s   %s", coachLineIndex + 1U,
+                  coachAnalysis.lineCount, san.c_str(), score);
+    drawText(28, 47, summary, TFT_WHITE, 1);
+
+    const int loss = std::max<int>(0, coachAnalysis.lines[0].scoreCp - line.scoreCp);
+    char comparison[36];
+    if (coachLineIndex == 0) {
+        std::snprintf(comparison, sizeof(comparison), "Best line  depth %u",
+                      coachAnalysis.completedDepth);
+    } else {
+        std::snprintf(comparison, sizeof(comparison), "-%d.%02d vs best  depth %u",
+                      loss / 100, loss % 100, coachAnalysis.completedDepth);
+    }
+    drawText(28, 62, comparison, coachLineIndex == 0 ? 0x07E0 : 0xFFE0, 1);
+
+    const std::string pv = principalVariationText(line);
+    char pvLine[36];
+    std::snprintf(pvLine, sizeof(pvLine), "PV %s", pv.c_str());
+    drawText(28, 77, pvLine, 0xBDF7, 1);
+    drawText(28, 94, "LEFT/RIGHT lines", 0x8410, 1);
+    drawText(28, 106, "ENTER show move  H close", 0x8410, 1);
+}
+
 void drawPause() {
     M5Cardputer.Display.fillScreen(kPanelColor);
     drawText(12, 8, "GAME MENU", kAccent, 2);
-    const std::array<const char*, 4> labels = {"Resume", "Level", "Undo turn", "New game"};
-    for (int row = 0; row < 4; ++row) {
-        const int y = 42 + row * 21;
+    const std::array<const char*, 5> labels = {"Resume", "Level", "Coach", "Undo turn",
+                                               "New game"};
+    for (int row = 0; row < 5; ++row) {
+        const int y = 31 + row * 20;
         if (pauseRow == row) {
             M5Cardputer.Display.fillRoundRect(8, y - 4, 224, 19, 4, 0x2945);
             drawText(12, y, ">", TFT_CYAN, 1);
@@ -312,6 +443,8 @@ void drawPause() {
             std::snprintf(value, sizeof(value), "%d %s", levelIndex + 1,
                           levelConfig(levelIndex).name);
             drawText(126, y, value, 0xFFE0, 1);
+        } else if (row == 2) {
+            drawText(126, y, coachModeName(coachMode), 0xFFE0, 1);
         }
     }
     if (searchRunning) drawText(12, 126, "Stopping engine...", 0xFD20, 1);
@@ -330,6 +463,7 @@ void redraw() {
         case Screen::Setup: drawSetup(); break;
         case Screen::Playing: drawGame(); break;
         case Screen::Promotion: drawPromotion(); break;
+        case Screen::Coach: drawCoach(); break;
         case Screen::Pause: drawPause(); break;
         case Screen::GameOver: drawGameOver(); break;
     }
@@ -354,6 +488,7 @@ Action readAction() {
         if (key == ',' || key == 'a') return Action::Left;
         if (key == '/' || key == 'd') return Action::Right;
         if (key == 'u') return Action::Undo;
+        if (key == 'h') return Action::Coach;
     }
     return Action::None;
 }
@@ -361,6 +496,7 @@ Action readAction() {
 void savePreferences() {
     preferences.putUChar("level", static_cast<std::uint8_t>(levelIndex));
     preferences.putUChar("side", static_cast<std::uint8_t>(sideChoice));
+    preferences.putUChar("coach", static_cast<std::uint8_t>(coachMode));
 }
 
 void loadPreferences() {
@@ -368,12 +504,15 @@ void loadPreferences() {
     levelIndex = std::min<int>(kLevelCount - 1, preferences.getUChar("level", 3));
     sideChoice = static_cast<SideChoice>(
         std::min<int>(2, preferences.getUChar("side", 0)));
+    coachMode = static_cast<CoachMode>(
+        std::min<int>(2, preferences.getUChar("coach", 1)));
 }
 
 void engineTask(void*) {
-    const SearchResult result = engine.search(searchPosition, levelIndex, gameSeed ^ searchRootKey);
+    const SearchResult result = engine.search(searchPosition, taskLimits);
     portENTER_CRITICAL(&resultMutex);
     taskResult = result;
+    taskResultPurpose = searchPurpose;
     searchDone = true;
     searchRunning = false;
     searchTaskHandle = nullptr;
@@ -381,11 +520,37 @@ void engineTask(void*) {
     vTaskDelete(nullptr);
 }
 
-void startEngineSearch() {
-    if (searchRunning || game.sideToMove() == humanColor || outcome != GameState::Ongoing)
-        return;
+SearchLimits opponentLimits() {
+    const LevelConfig& level = levelConfig(levelIndex);
+    SearchLimits limits;
+    limits.moveTimeMs = level.moveTimeMs;
+    limits.maxDepth = level.maxDepth;
+    limits.errorWindowCp = level.errorWindowCp;
+    limits.candidateCount = level.candidateCount;
+    limits.randomSeed = gameSeed ^ game.key();
+    return limits;
+}
+
+SearchLimits coachLimits() {
+    SearchLimits limits;
+    limits.moveTimeMs = 1800;
+    limits.maxDepth = 18;
+    limits.errorWindowCp = 0;
+    limits.candidateCount = 1;
+    limits.multiPv = 3;
+    limits.randomSeed = gameSeed ^ game.key() ^ UINT64_C(0x434F414348);
+    limits.useOpeningBook = false;
+    return limits;
+}
+
+void startSearch(SearchPurpose purpose) {
+    if (searchRunning || outcome != GameState::Ongoing) return;
+    if (purpose == SearchPurpose::Opponent && game.sideToMove() == humanColor) return;
+    if (purpose == SearchPurpose::Coach && game.sideToMove() != humanColor) return;
     searchPosition = game;
     searchRootKey = game.key();
+    searchPurpose = purpose;
+    taskLimits = purpose == SearchPurpose::Opponent ? opponentLimits() : coachLimits();
     searchDone = false;
     discardSearch = false;
     engineLaunchFailed = false;
@@ -395,6 +560,31 @@ void startEngineSearch() {
     if (created != pdPASS) {
         searchRunning = false;
         engineLaunchFailed = true;
+    }
+}
+
+void startEngineSearch() { startSearch(SearchPurpose::Opponent); }
+
+void startCoachSearch(bool openWhenReady) {
+    if (coachMode == CoachMode::Off || outcome != GameState::Ongoing ||
+        game.sideToMove() != humanColor) {
+        openCoachWhenReady = false;
+        return;
+    }
+    openCoachWhenReady = openWhenReady;
+    if (coachAnalysisCurrent()) {
+        openCoachWhenReady = false;
+        return;
+    }
+    startSearch(SearchPurpose::Coach);
+}
+
+void startTurnSearch() {
+    if (outcome != GameState::Ongoing) return;
+    if (game.sideToMove() != humanColor) {
+        startEngineSearch();
+    } else if (coachMode == CoachMode::Always) {
+        startCoachSearch(false);
     }
 }
 
@@ -419,26 +609,48 @@ void performUndo() {
     selectedSquare = -1;
     selectedMoves.clear();
     lastSearch = SearchResult{};
+    coachAnalysis = SearchResult{};
+    coachAnalysisKey = 0;
+    coachFeedback = CoachFeedback{};
     refreshLastMove();
     screen = Screen::Playing;
     cursorSquare = humanColor == Color::White ? 12 : 52;
+    startTurnSearch();
 }
 
 void applyMove(const Move& move) {
     if (recordCount >= records.size()) return;
+    const bool humanMove = game.sideToMove() == humanColor;
+    const std::string san = game.moveToSan(move);
+    if (humanMove) {
+        coachFeedback = coachAnalysisCurrent()
+                            ? classifyCoachMove(coachAnalysis, move)
+                            : CoachFeedback{};
+        if (coachSearchRunning()) {
+            engine.requestStop();
+            discardSearch = true;
+            pendingOpponentSearch = true;
+        }
+    }
     Undo undo;
     if (!game.makeMove(move, undo)) return;
-    records[recordCount++] = GameRecord{move, undo};
+    GameRecord& record = records[recordCount++];
+    record.move = move;
+    record.undo = undo;
+    record.san.fill('\0');
+    std::snprintf(record.san.data(), record.san.size(), "%s", san.c_str());
     lastMove = move;
     hasLastMove = true;
     selectedSquare = -1;
     selectedMoves.clear();
+    coachAnalysis = SearchResult{};
+    coachAnalysisKey = 0;
     outcome = game.gameState();
     if (outcome != GameState::Ongoing) {
         screen = Screen::GameOver;
     } else {
         screen = Screen::Playing;
-        startEngineSearch();
+        startTurnSearch();
     }
 }
 
@@ -451,6 +663,12 @@ void newGame() {
     outcome = GameState::Ongoing;
     hasLastMove = false;
     lastSearch = SearchResult{};
+    coachAnalysis = SearchResult{};
+    coachAnalysisKey = 0;
+    coachFeedback = CoachFeedback{};
+    pendingUndo = false;
+    pendingOpponentSearch = false;
+    openCoachWhenReady = false;
     engineLaunchFailed = false;
     gameSeed = (static_cast<std::uint64_t>(esp_random()) << 32U) | esp_random();
     if (sideChoice == SideChoice::White) {
@@ -463,7 +681,7 @@ void newGame() {
     cursorSquare = humanColor == Color::White ? 12 : 52;
     screen = Screen::Playing;
     savePreferences();
-    startEngineSearch();
+    startTurnSearch();
 }
 
 void moveCursor(Action action) {
@@ -477,7 +695,7 @@ void moveCursor(Action action) {
 }
 
 void selectAtCursor() {
-    if (game.sideToMove() != humanColor || searchRunning) return;
+    if (game.sideToMove() != humanColor || opponentSearchRunning()) return;
     if (selectedSquare < 0) {
         const Piece piece = game.pieceAt(cursorSquare);
         if (piece == 0 || pieceColor(piece) != humanColor) return;
@@ -529,7 +747,7 @@ void confirmPromotion() {
 
 void handleSetup(Action action) {
     if (action == Action::Up) setupRow = std::max(0, setupRow - 1);
-    if (action == Action::Down) setupRow = std::min(2, setupRow + 1);
+    if (action == Action::Down) setupRow = std::min(3, setupRow + 1);
     if ((action == Action::Left || action == Action::Right || action == Action::Confirm) &&
         setupRow == 0) {
         int value = static_cast<int>(sideChoice);
@@ -542,7 +760,12 @@ void handleSetup(Action action) {
         levelIndex += action == Action::Left ? kLevelCount - 1 : 1;
         levelIndex %= kLevelCount;
         savePreferences();
-    } else if (action == Action::Confirm && setupRow == 2) {
+    } else if ((action == Action::Left || action == Action::Right ||
+                action == Action::Confirm) &&
+               setupRow == 2) {
+        cycleCoachMode(action == Action::Left ? -1 : 1);
+        savePreferences();
+    } else if (action == Action::Confirm && setupRow == 3) {
         newGame();
     }
 }
@@ -561,7 +784,14 @@ void handlePlaying(Action action) {
         performUndo();
         return;
     }
-    if (searchRunning || game.sideToMove() != humanColor) return;
+    if (action == Action::Coach && game.sideToMove() == humanColor &&
+        !opponentSearchRunning()) {
+        screen = Screen::Coach;
+        coachLineIndex = 0;
+        startCoachSearch(true);
+        return;
+    }
+    if (opponentSearchRunning() || game.sideToMove() != humanColor) return;
     if (action == Action::Up || action == Action::Down || action == Action::Left ||
         action == Action::Right) {
         moveCursor(action);
@@ -570,6 +800,39 @@ void handlePlaying(Action action) {
     } else if (action == Action::Cancel) {
         selectedSquare = -1;
         selectedMoves.clear();
+    }
+}
+
+void handleCoach(Action action) {
+    if (action == Action::Coach || action == Action::Cancel) {
+        openCoachWhenReady = false;
+        screen = Screen::Playing;
+        return;
+    }
+    if (action == Action::Menu) {
+        screen = Screen::Playing;
+        handlePlaying(Action::Menu);
+        return;
+    }
+    if (action == Action::Undo) {
+        screen = Screen::Playing;
+        performUndo();
+        return;
+    }
+    if (!coachAnalysisCurrent()) return;
+    if (action == Action::Left || action == Action::Up) {
+        coachLineIndex = static_cast<std::uint8_t>(
+            (coachLineIndex + coachAnalysis.lineCount - 1U) % coachAnalysis.lineCount);
+    } else if (action == Action::Right || action == Action::Down) {
+        coachLineIndex = static_cast<std::uint8_t>(
+            (coachLineIndex + 1U) % coachAnalysis.lineCount);
+    } else if (action == Action::Confirm) {
+        const Move candidate = coachAnalysis.lines[coachLineIndex].bestMove;
+        screen = Screen::Playing;
+        cursorSquare = candidate.from;
+        selectedSquare = -1;
+        selectedMoves.clear();
+        selectAtCursor();
     }
 }
 
@@ -587,20 +850,26 @@ void handlePromotion(Action action) {
 
 void handlePause(Action action) {
     if (action == Action::Up) pauseRow = std::max(0, pauseRow - 1);
-    if (action == Action::Down) pauseRow = std::min(3, pauseRow + 1);
+    if (action == Action::Down) pauseRow = std::min(4, pauseRow + 1);
     if (pauseRow == 1 && (action == Action::Left || action == Action::Right)) {
         levelIndex += action == Action::Left ? kLevelCount - 1 : 1;
         levelIndex %= kLevelCount;
+        savePreferences();
+    }
+    if (pauseRow == 2 &&
+        (action == Action::Left || action == Action::Right ||
+         action == Action::Confirm)) {
+        cycleCoachMode(action == Action::Left ? -1 : 1);
         savePreferences();
     }
     if ((action == Action::Menu || action == Action::Cancel ||
          (action == Action::Confirm && pauseRow == 0)) &&
         !searchRunning) {
         screen = outcome == GameState::Ongoing ? Screen::Playing : Screen::GameOver;
-        startEngineSearch();
-    } else if (action == Action::Confirm && pauseRow == 2 && !searchRunning) {
-        performUndo();
+        startTurnSearch();
     } else if (action == Action::Confirm && pauseRow == 3 && !searchRunning) {
+        performUndo();
+    } else if (action == Action::Confirm && pauseRow == 4 && !searchRunning) {
         screen = Screen::Setup;
     }
 }
@@ -616,8 +885,10 @@ void handleGameOver(Action action) {
 void consumeSearchResult() {
     if (!searchDone) return;
     SearchResult result;
+    SearchPurpose completedPurpose;
     portENTER_CRITICAL(&resultMutex);
     result = taskResult;
+    completedPurpose = taskResultPurpose;
     searchDone = false;
     portEXIT_CRITICAL(&resultMutex);
 
@@ -625,17 +896,30 @@ void consumeSearchResult() {
         discardSearch = false;
         if (pendingUndo) {
             pendingUndo = false;
+            pendingOpponentSearch = false;
             performUndo();
+        } else if (pendingOpponentSearch) {
+            pendingOpponentSearch = false;
+            startEngineSearch();
         }
         redraw();
         return;
     }
-    if (result.hasMove && game.key() == searchRootKey &&
-        game.sideToMove() != humanColor) {
-        lastSearch = result;
-        applyMove(result.bestMove);
-        cursorSquare = result.bestMove.to;
+    if (result.hasMove && game.key() == searchRootKey) {
+        if (completedPurpose == SearchPurpose::Opponent &&
+            game.sideToMove() != humanColor) {
+            lastSearch = result;
+            applyMove(result.bestMove);
+            cursorSquare = result.bestMove.to;
+        } else if (completedPurpose == SearchPurpose::Coach &&
+                   game.sideToMove() == humanColor) {
+            coachAnalysis = result;
+            coachAnalysisKey = searchRootKey;
+            coachLineIndex = 0;
+            if (openCoachWhenReady) screen = Screen::Coach;
+        }
     }
+    openCoachWhenReady = false;
     redraw();
 }
 
@@ -661,6 +945,7 @@ void loop() {
             case Screen::Setup: handleSetup(action); break;
             case Screen::Playing: handlePlaying(action); break;
             case Screen::Promotion: handlePromotion(action); break;
+            case Screen::Coach: handleCoach(action); break;
             case Screen::Pause: handlePause(action); break;
             case Screen::GameOver: handleGameOver(action); break;
         }

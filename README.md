@@ -13,6 +13,9 @@ limits.
   last move, and check
 - Play as White, Black, or a randomly selected side
 - Eight persistent difficulty levels from Beginner to Maximum
+- Persistent Coach modes: Off, on-demand with `H`, or automatic every human turn
+- Exact top-three analysis with SAN moves, centipawn evaluations, principal
+  variations, loss versus the best move, and post-move quality feedback
 - Iterative-deepening alpha-beta engine with quiescence search, transposition
   table, pruning, positional evaluation, and compact opening book
 - Responsive dual-core firmware: the engine searches a private position on a
@@ -32,6 +35,7 @@ aliases.
 | Backspace / Esc | Cancel selection / close chooser |
 | Tab | Open or close the in-game menu |
 | U | Undo the last human turn |
+| H | Open Coach or start on-demand top-three analysis |
 
 ## Build and test
 
@@ -58,6 +62,7 @@ first repository release that explicitly supports the Cardputer-Adv.
 
 - `include/cardputer_chess/` — portable rules and engine interfaces
 - `src/chess.cpp` — chess position, rules, FEN, and game outcomes
+- `src/coach.cpp` — coach modes and move-quality classification
 - `src/engine.cpp` — evaluation, search, levels, hash table, and opening book
 - `src/main.cpp` — Cardputer UI, controls, persistence, and engine task
 - `tests/` — native correctness and search tests

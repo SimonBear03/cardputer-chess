@@ -22,11 +22,14 @@ firmware commit and any failures in the release notes or issue tracker.
 - Change **Play as** through White, Black, and Random.
 - Change all eight levels and reboot; confirm the last side choice and level
   persist.
+- Change Coach through Off, On demand, and Always; reboot and confirm it persists.
 - Navigate with `Fn` plus each printed arrow key.
 - Navigate again with bare `;`, `,`, `.`, `/`, then with `W/A/S/D`.
 - Confirm with Enter and Space.
 - Select a piece, then cancel with Backspace and with `Fn`+Backspace (Esc).
 - Open and close the game menu with Tab.
+- Open Coach with `H`, browse candidates with Left/Right, close it with `H` and
+  Esc, and use Enter to focus a suggested move on the board.
 
 ## 3. Board interaction
 
@@ -48,6 +51,13 @@ firmware commit and any failures in the release notes or issue tracker.
   resumes interaction.
 - During a search, press `U`; confirm the pending search stops and the complete
   human turn is undone.
+- In On-demand mode, press `H` on a human turn and confirm three unique legal
+  SAN candidates, evaluations, PV text, and loss versus the best line appear.
+- In Always mode, confirm Coach analysis begins on each human turn without
+  blocking cursor movement; play immediately and confirm the opponent search
+  starts cleanly after Coach cancellation.
+- Play the first, second, third, and an unlisted move in separate runs; confirm
+  the quality feedback is sensible and an unlisted move says `Outside top 3`.
 - Finish one checkmate and one stalemate; verify the result overlay and new-game
   path.
 - Verify undo works from the game-over screen.

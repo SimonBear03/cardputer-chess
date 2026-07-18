@@ -1,7 +1,7 @@
 CXX ?= g++
 CPPFLAGS := -Iinclude
 CXXFLAGS := -std=c++17 -O2 -Wall -Wextra -Wpedantic -Wconversion -Wshadow
-SOURCES := src/chess.cpp src/engine.cpp tests/test_main.cpp
+SOURCES := src/chess.cpp src/coach.cpp src/engine.cpp tests/test_main.cpp
 TEST_BINARY := build/cardputer_chess_tests
 
 .PHONY: all test test-sanitize clean

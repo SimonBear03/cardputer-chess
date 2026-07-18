@@ -1,4 +1,5 @@
 #include "cardputer_chess/chess.hpp"
+#include "cardputer_chess/coach.hpp"
 #include "cardputer_chess/engine.hpp"
 
 #include <array>
@@ -383,6 +384,35 @@ void testLevelsAndEngine() {
     }
     expectEqual(analysis.toFen(), analysisFen, "MultiPV preserves caller FEN");
     expectEqual(analysis.key(), analysisKey, "MultiPV preserves caller hash key");
+
+    expectEqual(std::string(coachModeName(CoachMode::OnDemand)),
+                std::string("On demand"), "coach mode has a display name");
+    const CoachFeedback bestFeedback =
+        classifyCoachMove(multiPv, multiPv.lines[0].bestMove);
+    expectEqual(bestFeedback.quality, MoveQuality::Best,
+                "top analysis move is classified as best");
+    expectEqual(bestFeedback.rank, std::uint8_t{1}, "best move has rank one");
+    const CoachFeedback thirdFeedback =
+        classifyCoachMove(multiPv, multiPv.lines[2].bestMove);
+    expectEqual(thirdFeedback.rank, std::uint8_t{3}, "third candidate has rank three");
+    expect(thirdFeedback.lossCp >= 0, "candidate loss is never negative");
+
+    Move outsideMove{};
+    MoveList analysisMoves;
+    analysis.generateLegalMoves(analysisMoves);
+    for (std::uint16_t index = 0; index < analysisMoves.size; ++index) {
+        bool listed = false;
+        for (std::uint8_t line = 0; line < multiPv.lineCount; ++line) {
+            listed = listed || analysisMoves[index] == multiPv.lines[line].bestMove;
+        }
+        if (!listed) {
+            outsideMove = analysisMoves[index];
+            break;
+        }
+    }
+    const CoachFeedback outsideFeedback = classifyCoachMove(multiPv, outsideMove);
+    expectEqual(outsideFeedback.quality, MoveQuality::OutsideTopThree,
+                "unlisted legal move is classified honestly");
 }
 
 }  // namespace

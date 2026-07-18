@@ -24,22 +24,28 @@ The target uses an ESP32-S3FN8: two 240 MHz LX7 cores, 512 KB on-chip SRAM,
 
 `include/cardputer_chess/chess.hpp` and `src/chess.cpp` implement the board,
 legal move generation, make/unmake, FEN, repetition history, draw rules, and
-game-state classification. This layer depends only on the C++ standard library
-and is compiled into both host tests and firmware.
+game-state classification, including Standard Algebraic Notation for display.
+This layer depends only on the C++ standard library and is compiled into both
+host tests and firmware.
 
 ### Portable engine
 
 `include/cardputer_chess/engine.hpp` and `src/engine.cpp` implement a bounded
 iterative-deepening alpha-beta engine with quiescence search, transposition
 table, move ordering, pruning, evaluation, an opening book, time control, and
-skill selection. It has no display or keyboard dependencies.
+skill selection. MultiPV repeats the root search while excluding earlier best
+moves, producing exact ranked alternatives rather than treating root ordering
+bounds as evaluations. `coach.hpp` and `coach.cpp` classify a played candidate
+without pretending that an unsearched move has an exact score. These modules
+have no display or keyboard dependencies.
 
 ### Cardputer application
 
-`src/main.cpp` owns the setup menu, persisted level/color preferences, board
+`src/main.cpp` owns the setup menu, persisted level/color/Coach preferences, board
 cursor and move selection, promotion chooser, direct LCD rendering, game
-history, and the background engine task. The UI never mutates the live game
-while the engine task is searching a private position copy.
+history, Coach overlay, and the background engine task. The engine always
+searches a private position copy, so the player can keep navigating and can
+play immediately while automatic Coach analysis is still winding down.
 
 ## Controls
 
@@ -53,13 +59,27 @@ Left, Down, and Right. `W/A/S/D` are aliases for development and accessibility.
 - Backspace: cancel a selected piece or leave a chooser
 - Tab: open the in-game menu
 - `U`: undo the human move and the engine reply
+- `H`: open Coach or begin on-demand analysis; Left/Right changes candidate and
+  Enter focuses its origin square on the board
 
 ## Concurrency
 
 The Arduino loop owns all game and display state. Engine work runs in a
 FreeRTOS task pinned to the other core with a copied `Position`. The task
 publishes only a small result under a critical section. This keeps display and
-keyboard handling responsive without concurrent mutation of chess state.
+keyboard handling responsive without concurrent mutation of chess state. The
+same task is reused for opponent and Coach work, so two searches never compete
+for RAM or CPU simultaneously. If the player moves during Coach analysis, the
+task is cancelled and the opponent search starts as soon as it exits.
+
+## Coach analysis
+
+Coach can be Off, On demand, or Always. Its fixed 1.8-second budget requests
+three ranked lines, disables the randomized opening book, and always selects
+the strongest root move. Scores are shown from the human side's perspective.
+For alternatives the UI reports centipawn loss versus line one; after a played
+move it reports a quality label when the move was one of the analyzed three,
+or honestly reports `Outside top 3` when no exact candidate score exists.
 
 ## Strength levels
 
@@ -74,6 +94,7 @@ merely fast.
 Host tests are the rules authority. Standard perft positions validate legal
 move generation, while focused tests cover castling, en passant, promotion,
 checkmate, stalemate, repetition, fifty-move draws, insufficient material,
-make/unmake identity, engine legality, levels, and cancellation. Firmware
+make/unmake identity, SAN, MultiPV uniqueness/order, Coach classification,
+engine legality, levels, and cancellation. Firmware
 compilation validates the hardware API boundary. Physical-device validation is
 still required for key legends, LCD appearance, battery life, and thermals.
