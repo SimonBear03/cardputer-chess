@@ -124,7 +124,7 @@ char pieceLetter(Piece piece) {
 void drawText(int x, int y, const char* value, std::uint16_t color = TFT_WHITE,
               int size = 1) {
     M5Cardputer.Display.setTextSize(size);
-    M5Cardputer.Display.setTextColor(color, kPanelColor);
+    M5Cardputer.Display.setTextColor(color);
     M5Cardputer.Display.setCursor(x, y);
     M5Cardputer.Display.print(value);
 }

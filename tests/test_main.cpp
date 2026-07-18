@@ -32,6 +32,15 @@ void expectEqual(const Actual& actual, const Expected& expected, std::string_vie
     }
 }
 
+void expectEqual(std::uint64_t actual, std::uint64_t expected, std::string_view message) {
+    ++assertions;
+    if (actual != expected) {
+        ++failures;
+        std::cerr << "FAIL: " << message << " (actual=" << actual
+                  << ", expected=" << expected << ")\n";
+    }
+}
+
 Position fen(std::string_view text) {
     std::string error;
     const auto parsed = Position::fromFen(text, &error);
@@ -98,6 +107,30 @@ void testPerft() {
     expectEqual(perft(endgame, 2), UINT64_C(191), "endgame perft depth 2");
     expectEqual(perft(endgame, 3), UINT64_C(2812), "endgame perft depth 3");
     expectEqual(perft(endgame, 4), UINT64_C(43238), "endgame perft depth 4");
+
+    Position castlingTactics = fen(
+        "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1");
+    expectEqual(perft(castlingTactics, 1), UINT64_C(6),
+                "castling tactics perft depth 1");
+    expectEqual(perft(castlingTactics, 2), UINT64_C(264),
+                "castling tactics perft depth 2");
+    expectEqual(perft(castlingTactics, 3), UINT64_C(9467),
+                "castling tactics perft depth 3");
+
+    Position promotionTactics =
+        fen("rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8");
+    expectEqual(perft(promotionTactics, 1), UINT64_C(44),
+                "promotion tactics perft depth 1");
+    expectEqual(perft(promotionTactics, 2), UINT64_C(1486),
+                "promotion tactics perft depth 2");
+    expectEqual(perft(promotionTactics, 3), UINT64_C(62379),
+                "promotion tactics perft depth 3");
+
+    Position middlegame = fen(
+        "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10");
+    expectEqual(perft(middlegame, 1), UINT64_C(46), "middlegame perft depth 1");
+    expectEqual(perft(middlegame, 2), UINT64_C(2079), "middlegame perft depth 2");
+    expectEqual(perft(middlegame, 3), UINT64_C(89890), "middlegame perft depth 3");
 }
 
 void testMakeUnmakeIdentity() {
