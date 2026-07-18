@@ -44,6 +44,8 @@ Host validation requires a C++17 compiler:
 ```sh
 make test
 make test-sanitize
+make benchmark
+make uci
 ```
 
 Firmware validation and upload use PlatformIO without requiring a persistent
@@ -54,6 +56,10 @@ uvx --with pip platformio run
 uvx --with pip platformio run --target upload
 uvx --with pip platformio device monitor
 ```
+
+`make benchmark` runs the fixed 64 KiB-hash performance suite. The UCI binary
+can also play paired external-engine matches through `tools/match.py`; see
+[docs/benchmarking.md](docs/benchmarking.md).
 
 The firmware environment pins the M5Cardputer library at version 1.2.0, the
 first repository release that explicitly supports the Cardputer-Adv.
@@ -66,6 +72,7 @@ first repository release that explicitly supports the Cardputer-Adv.
 - `src/engine.cpp` — evaluation, search, levels, hash table, and opening book
 - `src/main.cpp` — Cardputer UI, controls, persistence, and engine task
 - `tests/` — native correctness and search tests
+- `tools/` — deterministic benchmark, UCI adapter, and paired-match runner
 - `docs/` — architecture, validation, and hardware test checklist
 
 See [docs/architecture.md](docs/architecture.md) for boundaries and memory

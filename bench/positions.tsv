@@ -1,0 +1,13 @@
+# id|FEN|Stockfish top moves, best first
+start|rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1|d2d4,e2e4,g1f3
+kiwipete|r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1|e2a6,d5e6,c3d1
+italian|r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/2PP1N2/PP3PPP/RNBQ1RK1 b kq - 4 6|c5b6,d7d6,e8g8
+sicilian|r1bqkbnr/pp2pppp/2np4/2p5/4P3/2N2N2/PPPP1PPP/R1BQKB1R w KQkq - 2 4|d2d4,f1c4,h2h3
+qgd|rnbq1rk1/pp3ppp/2pbpn2/3p4/2PP4/2N1PN2/PP3PPP/R1BQKB1R w KQ - 2 7|f1d3,f1e2,d1c2
+middlegame|r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10|c3d5,e2d2,g5f6
+castling-tactics|r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1|c4c5,g1h1,d2d4
+promotion-tactics|rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8|d7c8q,d7c8r,h1f1
+rook-endgame|8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1|b4f4,b4c4,e2e3
+pawn-endgame|8/5pk1/4p1p1/3pP2p/3P1P1P/5KP1/8/8 w - - 0 38|f3e3,f3e2,f3f2
+mate-one|7k/8/5KQ1/8/8/8/8/8 w - - 0 1|g6g7,g6h6,g6g4
+queen-capture|4k3/8/8/8/3q4/8/3R4/4K3 w - - 0 1|d2d4,e1e2,e1d1
