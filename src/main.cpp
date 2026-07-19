@@ -9,6 +9,7 @@
 #include "cardputer_chess/coach.hpp"
 #include "cardputer_chess/engine.hpp"
 #include "cardputer_chess/piece_glyphs.hpp"
+#include "cardputer_chess/saved_game.hpp"
 
 #include <algorithm>
 #include <array>
@@ -25,6 +26,7 @@ constexpr int kSquarePixels = 15;
 constexpr int kPanelX = 133;
 constexpr int kPanelWidth = 107;
 constexpr std::uint32_t kAnimationFrameMs = 42;
+constexpr std::uint32_t kSearchTaskStackBytes = 24576;
 
 constexpr std::uint16_t rgb565(std::uint8_t red, std::uint8_t green,
                                std::uint8_t blue) {
@@ -48,6 +50,7 @@ enum class Action : std::uint8_t {
 enum class SideChoice : std::uint8_t { White, Black, Random };
 enum class ThemeMode : std::uint8_t { Classic, Neon, Royal };
 enum class SearchPurpose : std::uint8_t { Opponent, Coach };
+enum class SaveSlot : std::uint8_t { None, A, B };
 enum class AnimationKind : std::uint8_t {
     None,
     GameIntro,
@@ -159,11 +162,16 @@ bool pendingUndo = false;
 bool pendingOpponentSearch = false;
 bool openCoachWhenReady = false;
 bool engineLaunchFailed = false;
+bool gameSaveFailed = false;
 std::uint64_t gameSeed = 0;
 std::uint64_t searchRootKey = 0;
 Screen drawnScreen = Screen::Setup;
 bool hasDrawnScreen = false;
 UiAnimation animation{};
+SavedGame savedGameScratch{};
+std::array<std::uint8_t, kSavedGameMaxBytes> savedGameBytes{};
+SaveSlot activeSaveSlot = SaveSlot::None;
+std::uint32_t activeSaveGeneration = 0;
 
 const ThemePalette& theme() {
     return kThemes[static_cast<std::size_t>(themeMode)];
@@ -396,7 +404,9 @@ void drawPanel() {
                   levelConfig(levelIndex).name);
     drawText(kPanelX + 4, 38, line, colors.accent, 1);
 
-    if (opponentSearchRunning()) {
+    if (gameSaveFailed) {
+        drawText(kPanelX + 4, 50, "SAVE ERROR", colors.check, 1);
+    } else if (opponentSearchRunning()) {
         drawText(kPanelX + 4, 50, "ENGINE THINKING", colors.secondary, 1);
     } else if (coachSearchRunning()) {
         drawText(kPanelX + 4, 50, "COACH THINKING", colors.secondary, 1);
@@ -768,6 +778,68 @@ void loadPreferences() {
         std::min<int>(2, preferences.getUChar("theme", 0)));
 }
 
+const char* saveSlotKey(SaveSlot slot) {
+    return slot == SaveSlot::A ? "game_a" : "game_b";
+}
+
+bool readSavedGameSlot(SaveSlot slot, SavedGame& savedGame) {
+    const char* key = saveSlotKey(slot);
+    const std::size_t size = preferences.getBytesLength(key);
+    if (size == 0 || size > savedGameBytes.size()) return false;
+    if (preferences.getBytes(key, savedGameBytes.data(), size) != size) return false;
+    return deserializeSavedGame(savedGameBytes.data(), size, savedGame);
+}
+
+bool loadNewestSavedGame() {
+    const bool validA = readSavedGameSlot(SaveSlot::A, savedGameScratch);
+    const std::uint32_t generationA = validA ? savedGameScratch.generation : 0;
+    const bool validB = readSavedGameSlot(SaveSlot::B, savedGameScratch);
+    const std::uint32_t generationB = validB ? savedGameScratch.generation : 0;
+    if (!validA && !validB) return false;
+
+    const SaveSlot selected =
+        validB && (!validA || savedGameGenerationNewer(generationB, generationA))
+            ? SaveSlot::B
+            : SaveSlot::A;
+    if (!readSavedGameSlot(selected, savedGameScratch)) return false;
+    activeSaveSlot = selected;
+    activeSaveGeneration = savedGameScratch.generation;
+    return true;
+}
+
+void clearSavedGame() {
+    preferences.remove(saveSlotKey(SaveSlot::A));
+    preferences.remove(saveSlotKey(SaveSlot::B));
+    activeSaveSlot = SaveSlot::None;
+    activeSaveGeneration = 0;
+    gameSaveFailed = false;
+}
+
+bool saveCurrentGame() {
+    savedGameScratch = SavedGame{};
+    savedGameScratch.generation = activeSaveGeneration + 1U;
+    savedGameScratch.gameSeed = gameSeed;
+    savedGameScratch.humanColor = humanColor;
+    savedGameScratch.moveCount = recordCount;
+    for (std::uint16_t index = 0; index < recordCount; ++index) {
+        savedGameScratch.moves[index] = encodeSavedMove(records[index].move);
+    }
+    const std::size_t size = serializeSavedGame(
+        savedGameScratch, savedGameBytes.data(), savedGameBytes.size());
+    const SaveSlot destination =
+        activeSaveSlot == SaveSlot::A ? SaveSlot::B : SaveSlot::A;
+    if (size == 0 ||
+        preferences.putBytes(saveSlotKey(destination), savedGameBytes.data(), size) !=
+            size) {
+        gameSaveFailed = true;
+        return false;
+    }
+    activeSaveSlot = destination;
+    activeSaveGeneration = savedGameScratch.generation;
+    gameSaveFailed = false;
+    return true;
+}
+
 void engineTask(void*) {
     const SearchResult result = engine.search(searchPosition, taskLimits);
     portENTER_CRITICAL(&resultMutex);
@@ -815,8 +887,9 @@ void startSearch(SearchPurpose purpose) {
     discardSearch = false;
     engineLaunchFailed = false;
     searchRunning = true;
-    const BaseType_t created = xTaskCreatePinnedToCore(engineTask, "chess-search", 16384,
-                                                       nullptr, 1, &searchTaskHandle, 0);
+    const BaseType_t created = xTaskCreatePinnedToCore(
+        engineTask, "chess-search", kSearchTaskStackBytes, nullptr, 1,
+        &searchTaskHandle, 0);
     if (created != pdPASS) {
         searchRunning = false;
         engineLaunchFailed = true;
@@ -853,6 +926,58 @@ void refreshLastMove() {
     if (hasLastMove) lastMove = records[recordCount - 1].move;
 }
 
+bool restoreSavedGame() {
+    if (!loadNewestSavedGame()) return false;
+
+    game.resetToStartPosition();
+    recordCount = 0;
+    humanColor = savedGameScratch.humanColor;
+    gameSeed = savedGameScratch.gameSeed;
+    for (std::uint16_t index = 0; index < savedGameScratch.moveCount; ++index) {
+        Move move;
+        if (!resolveSavedMove(game, savedGameScratch.moves[index], move)) {
+            clearSavedGame();
+            game.resetToStartPosition();
+            recordCount = 0;
+            return false;
+        }
+        const std::string san = game.moveToSan(move);
+        Undo undo;
+        if (!game.makeMove(move, undo)) {
+            clearSavedGame();
+            game.resetToStartPosition();
+            recordCount = 0;
+            return false;
+        }
+        GameRecord& record = records[recordCount++];
+        record.move = move;
+        record.undo = undo;
+        record.san.fill('\0');
+        std::snprintf(record.san.data(), record.san.size(), "%s", san.c_str());
+        if ((index & 31U) == 31U) delay(1);
+    }
+
+    selectedSquare = -1;
+    selectedMoves.clear();
+    promotionIndex = 0;
+    lastSearch = SearchResult{};
+    coachAnalysis = SearchResult{};
+    coachAnalysisKey = 0;
+    coachFeedback = CoachFeedback{};
+    pendingUndo = false;
+    pendingOpponentSearch = false;
+    openCoachWhenReady = false;
+    engineLaunchFailed = false;
+    animation = UiAnimation{};
+    outcome = game.gameState();
+    refreshLastMove();
+    cursorSquare = hasLastMove ? lastMove.to
+                               : (humanColor == Color::White ? 12 : 52);
+    screen = outcome == GameState::Ongoing ? Screen::Playing : Screen::GameOver;
+    startTurnSearch();
+    return true;
+}
+
 void performUndo() {
     if (searchRunning) {
         engine.requestStop();
@@ -876,6 +1001,7 @@ void performUndo() {
     refreshLastMove();
     screen = Screen::Playing;
     cursorSquare = humanColor == Color::White ? 12 : 52;
+    saveCurrentGame();
     startTurnSearch();
 }
 
@@ -909,6 +1035,7 @@ void applyMove(const Move& move) {
     coachAnalysis = SearchResult{};
     coachAnalysisKey = 0;
     outcome = game.gameState();
+    saveCurrentGame();
     if (outcome != GameState::Ongoing) {
         screen = Screen::GameOver;
         startAnimation(outcomeAnimation(), 1450);
@@ -948,6 +1075,7 @@ void newGame() {
     screen = Screen::Playing;
     startAnimation(AnimationKind::GameIntro, 360);
     savePreferences();
+    saveCurrentGame();
     startTurnSearch();
 }
 
@@ -1143,12 +1271,14 @@ void handlePause(Action action) {
     } else if (action == Action::Confirm && pauseRow == 4 && !searchRunning) {
         performUndo();
     } else if (action == Action::Confirm && pauseRow == 5 && !searchRunning) {
+        clearSavedGame();
         screen = Screen::Setup;
     }
 }
 
 void handleGameOver(Action action) {
     if (action == Action::Confirm) {
+        clearSavedGame();
         screen = Screen::Setup;
     } else if (action == Action::Undo) {
         performUndo();
@@ -1205,6 +1335,7 @@ void setup() {
     M5Cardputer.Display.setTextWrap(false);
     M5Cardputer.Display.setBrightness(110);
     loadPreferences();
+    restoreSavedGame();
     redraw();
 }
 

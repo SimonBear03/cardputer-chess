@@ -1,6 +1,7 @@
 #include "cardputer_chess/chess.hpp"
 #include "cardputer_chess/coach.hpp"
 #include "cardputer_chess/engine.hpp"
+#include "cardputer_chess/saved_game.hpp"
 
 #include <array>
 #include <cstdint>
@@ -437,6 +438,109 @@ void testLevelsAndEngine() {
                 "unlisted legal move is classified honestly");
 }
 
+void testSavedGamePersistence() {
+    SavedGame saved;
+    saved.generation = 42;
+    saved.gameSeed = UINT64_C(0x123456789ABCDEF0);
+    saved.humanColor = Color::Black;
+
+    Position original = Position::startPosition();
+    constexpr std::array<std::string_view, 8> line = {
+        "e2e4", "c7c5", "g1f3", "d7d6", "f1b5", "b8c6", "e1g1", "c8d7"};
+    for (std::string_view uci : line) {
+        const Move move = requireMove(original, uci);
+        saved.moves[saved.moveCount++] = encodeSavedMove(move);
+        Undo undo;
+        expect(original.makeMove(move, undo), "saved-game source move can be made");
+    }
+
+    std::array<std::uint8_t, kSavedGameMaxBytes> bytes{};
+    const std::size_t size = serializeSavedGame(saved, bytes.data(), bytes.size());
+    expect(size > 0, "saved game serializes");
+    expectEqual(size, static_cast<std::size_t>(24 + line.size() * 2),
+                "saved game uses compact variable-length format");
+
+    SavedGame decoded;
+    expect(deserializeSavedGame(bytes.data(), size, decoded),
+           "saved game checksum and format validate");
+    expectEqual(decoded.generation, saved.generation,
+                "saved game generation round-trips");
+    expectEqual(decoded.gameSeed, saved.gameSeed, "saved game seed round-trips");
+    expectEqual(decoded.humanColor, Color::Black, "saved game human side round-trips");
+    expectEqual(decoded.moveCount, saved.moveCount, "saved game move count round-trips");
+
+    Position restored = Position::startPosition();
+    for (std::uint16_t index = 0; index < decoded.moveCount; ++index) {
+        Move move;
+        expect(resolveSavedMove(restored, decoded.moves[index], move),
+               "saved move resolves to the complete legal move");
+        Undo undo;
+        expect(restored.makeMove(move, undo), "resolved saved move can be replayed");
+    }
+    expectEqual(restored.toFen(), original.toFen(), "saved game restores exact position");
+    expectEqual(restored.key(), original.key(), "saved game restores exact hash history");
+
+    SavedGame repeated;
+    Position repeatedSource = Position::startPosition();
+    constexpr std::array<std::string_view, 8> repetitionLine = {
+        "g1f3", "g8f6", "f3g1", "f6g8", "g1f3", "g8f6", "f3g1", "f6g8"};
+    for (std::string_view uci : repetitionLine) {
+        const Move move = requireMove(repeatedSource, uci);
+        repeated.moves[repeated.moveCount++] = encodeSavedMove(move);
+        Undo undo;
+        expect(repeatedSource.makeMove(move, undo),
+               "repetition source move can be made");
+    }
+    Position repeatedRestore = Position::startPosition();
+    for (std::uint16_t index = 0; index < repeated.moveCount; ++index) {
+        Move move;
+        expect(resolveSavedMove(repeatedRestore, repeated.moves[index], move),
+               "repetition move resolves from save");
+        Undo undo;
+        expect(repeatedRestore.makeMove(move, undo),
+               "repetition move replays from save");
+    }
+    expect(repeatedRestore.isRepetition(3),
+           "saved move replay reconstructs threefold-repetition history");
+
+    Position castle = fen("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1");
+    const Move castleMove = requireMove(castle, "e1g1");
+    Move resolvedCastle;
+    expect(resolveSavedMove(castle, encodeSavedMove(castleMove), resolvedCastle),
+           "saved castling move resolves");
+    expect((resolvedCastle.flags & MoveKingCastle) != 0U,
+           "saved castling move recovers its rule flag");
+
+    Position enPassant = fen("4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1");
+    const Move enPassantMove = requireMove(enPassant, "e5d6");
+    Move resolvedEnPassant;
+    expect(resolveSavedMove(enPassant, encodeSavedMove(enPassantMove),
+                            resolvedEnPassant),
+           "saved en-passant move resolves");
+    expect((resolvedEnPassant.flags & MoveEnPassant) != 0U,
+           "saved en-passant move recovers its rule flag");
+
+    Position promotion = fen("4k3/P7/8/8/8/8/8/4K3 w - - 0 1");
+    const Move promotionMove = requireMove(promotion, "a7a8n");
+    Move resolvedPromotion;
+    expect(resolveSavedMove(promotion, encodeSavedMove(promotionMove),
+                            resolvedPromotion),
+           "saved promotion move resolves");
+    expectEqual(resolvedPromotion.promotion, PieceType::Knight,
+                "saved promotion choice round-trips");
+
+    bytes[20] ^= 0x01U;
+    expect(!deserializeSavedGame(bytes.data(), size, decoded),
+           "saved game rejects corrupted move data");
+    bytes[20] ^= 0x01U;
+    expect(!deserializeSavedGame(bytes.data(), size - 1, decoded),
+           "saved game rejects a truncated write");
+    expect(savedGameGenerationNewer(43, 42), "newer save generation is selected");
+    expect(!savedGameGenerationNewer(42, 42), "equal save generation is not newer");
+    expect(savedGameGenerationNewer(0, UINT32_MAX),
+           "save generation comparison handles rollover");
+}
+
 }  // namespace
 
 int main() {
@@ -451,6 +555,7 @@ int main() {
     testRepetition();
     testSanNotation();
     testLevelsAndEngine();
+    testSavedGamePersistence();
 
     if (failures != 0) {
         std::cerr << failures << " failure(s) across " << assertions << " assertions\n";

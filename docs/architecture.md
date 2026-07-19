@@ -28,6 +28,11 @@ The target uses an ESP32-S3FN8: two 240 MHz LX7 cores, 512 KB on-chip SRAM,
 3. The LCD is drawn directly; no full-screen sprite is kept in RAM.
 4. Flash may hold code and a compact opening book, but microSD is not required.
 
+The background search task uses a fixed 24 KiB stack. Compiler stack-usage
+reports show that the search driver itself needs roughly 7.5 KiB before deeper
+alpha-beta and quiescence frames, so the prior 16 KiB allocation did not leave a
+safe worst-case margin at the harder levels.
+
 ## Layers
 
 ### Portable chess core
@@ -37,6 +42,12 @@ legal move generation, make/unmake, FEN, repetition history, draw rules, and
 game-state classification, including Standard Algebraic Notation for display.
 This layer depends only on the C++ standard library and is compiled into both
 host tests and firmware.
+
+`saved_game.hpp` and `saved_game.cpp` provide the portable persistence format.
+They encode each completed move into two bytes and protect the versioned record
+with a CRC. Restoring by replaying the legal moves reconstructs castling and en
+passant state, repetition history, notation, last-move highlighting, and undo
+records instead of restoring only the visible board from a FEN snapshot.
 
 ### Portable engine
 
@@ -72,6 +83,14 @@ reserved for the bishop cut and shared base accent, while the king's cross stays
 part of its solid body. The engine always searches a private position copy, so
 the player can keep navigating and can play immediately while automatic Coach
 analysis is still winding down.
+
+The application saves the current move history, human side, random seed, and a
+monotonic generation to two alternating ESP32 NVS slots. Each completed move or
+undo writes the inactive slot, so an interrupted write leaves the previous slot
+available. On boot the newest versioned record with a valid CRC is replayed and
+shown immediately. Engine and Coach searches, open overlays, selections, and
+animations are intentionally transient. Returning to setup through New Game
+clears both slots.
 
 The LCD is cleared only when changing screens or themes. Steady-state updates
 redraw the relevant board/menu state inside one display write transaction,
@@ -112,6 +131,11 @@ same task is reused for opponent and Coach work, so two searches never compete
 for RAM or CPU simultaneously. If the player moves during Coach analysis, the
 task is cancelled and the opponent search starts as soon as it exits.
 
+The search checks its limits every 1,024 nodes and briefly blocks once every
+4,096 nodes on Arduino. This gives the core-zero idle task enough execution time
+to service the ESP32 task watchdog during the 4.5-second Master and 10-second
+Maximum budgets without changing those budgets or disabling watchdog coverage.
+
 ## Coach analysis
 
 Coach can be Off, On demand, or Always. Its fixed 1.8-second budget requests
@@ -141,6 +165,6 @@ Host tests are the rules authority. Standard perft positions validate legal
 move generation, while focused tests cover castling, en passant, promotion,
 checkmate, stalemate, repetition, fifty-move draws, insufficient material,
 make/unmake identity, SAN, MultiPV uniqueness/order, Coach classification,
-engine legality, levels, and cancellation. Firmware
+engine legality, levels, cancellation, and saved-game serialization/replay. Firmware
 compilation validates the hardware API boundary. Physical-device validation is
 still required for key legends, LCD appearance, battery life, and thermals.

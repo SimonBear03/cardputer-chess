@@ -17,6 +17,13 @@ Record the firmware commit and any failures when testing a release.
 - If automatic download mode fails, switch the device `OFF`, hold `G0`, apply
   USB power, release `G0`, and retry the upload.
 - Confirm the setup screen appears without a reboot loop or corrupted pixels.
+- Start a game, complete several moves, switch the Cardputer off, and switch it
+  back on. Confirm it boots directly to the same board, side, move history,
+  last-move highlight, and undo state.
+- Switch it off while the engine is thinking immediately after a human move.
+  Confirm the completed human move is restored and engine thinking restarts.
+- Choose New Game from the game menu, reboot before starting another game, and
+  confirm the old game is not resumed.
 
 ## 2. Keyboard and menus
 
@@ -61,6 +68,8 @@ Record the firmware commit and any failures when testing a release.
   opening move without blocking keyboard/UI updates.
 - Try Beginner, Club, Expert, and Maximum. Confirm the UI remains responsive
   while `Thinking...` is shown and the engine eventually makes a legal move.
+- Play at least ten non-book engine turns on Maximum and confirm no task-watchdog
+  reset, reboot, or repeated screen flashing occurs during the ten-second budget.
 - During a search, press Tab and confirm the engine stops cleanly before the menu
   resumes interaction.
 - During a search, press `U`; confirm the pending search stops and the complete

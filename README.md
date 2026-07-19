@@ -17,6 +17,12 @@ Cardputer-Adv. You play against the built-in engine using the keyboard and the
 The board shows `a`–`h` and `1`–`8` coordinates. They rotate automatically when
 you play as Black, so your pieces always begin at the bottom of the screen.
 
+The current game is saved automatically after every completed move and undo.
+Turn the Cardputer off whenever you need to put it away; the next boot returns
+directly to the same game. If it was the engine's turn, thinking restarts from
+the restored position. Choosing New Game from the game menu or result screen
+clears the old game and returns to setup.
+
 ## Controls
 
 The printed arrow keys use `Fn` with `;`, `,`, `.`, and `/`. The game also
@@ -66,6 +72,7 @@ See [the beginner notation guide](docs/chess-notation.md) for examples such as
 - Coach modes: Off, on demand with `H`, or automatic on every human turn
 - Three ranked Coach suggestions with evaluations and short continuation lines
 - A compact opening book and a bounded chess engine designed for the ESP32-S3
+- Automatic power-safe resume from the last completed move
 - Responsive background search, so menus and the board remain usable while the
   engine thinks
 - Brief non-blocking animations for game start, moves, checks, and results
@@ -126,6 +133,7 @@ workflow.
 - `src/chess.cpp` — board state, legal moves, rules, and notation
 - `src/coach.cpp` — Coach modes and move-quality labels
 - `src/engine.cpp` — search, evaluation, difficulty levels, and opening book
+- `src/saved_game.cpp` — versioned move-history serialization and validation
 - `src/main.cpp` — Cardputer display, keyboard, preferences, and engine task
 - `tests/` — host-side correctness tests
 - `tools/` — benchmark, UCI, and match utilities

@@ -1,7 +1,7 @@
 CXX ?= g++
 CPPFLAGS := -Iinclude
 CXXFLAGS := -std=c++17 -O2 -Wall -Wextra -Wpedantic -Wconversion -Wshadow
-SOURCES := src/chess.cpp src/coach.cpp src/engine.cpp tests/test_main.cpp
+SOURCES := src/chess.cpp src/coach.cpp src/engine.cpp src/saved_game.cpp tests/test_main.cpp
 TEST_BINARY := build/cardputer_chess_tests
 BENCH_BINARY := build/cardputer_chess_benchmark
 UCI_BINARY := build/cardputer_chess_uci
@@ -10,7 +10,8 @@ UCI_BINARY := build/cardputer_chess_uci
 
 all: test
 
-$(TEST_BINARY): $(SOURCES) include/cardputer_chess/chess.hpp include/cardputer_chess/engine.hpp
+$(TEST_BINARY): $(SOURCES) include/cardputer_chess/chess.hpp \
+		include/cardputer_chess/engine.hpp include/cardputer_chess/saved_game.hpp
 	@mkdir -p build
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(SOURCES) -o $(TEST_BINARY)
 

@@ -126,6 +126,12 @@ std::uint64_t Engine::nowMs() {
 
 bool Engine::shouldStop() {
     if (aborted_) return true;
+#ifdef ARDUINO
+    // The search task runs above IDLE0 on a dedicated core. Briefly blocking it
+    // lets the ESP32 idle task feed the task watchdog during multi-second Master
+    // and Maximum searches without materially reducing the thinking budget.
+    if ((nodes_ & UINT64_C(4095)) == 0U) delay(1);
+#endif
     if (stopRequested_.load(std::memory_order_relaxed)) {
         aborted_ = true;
         return true;
