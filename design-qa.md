@@ -22,6 +22,11 @@
   `build/design-compare-neon-board.png`
 - Solid-piece source/reduction/native-view comparison evidence:
   `build/design-compare-solid-pieces.png`
+- Current-run piece-contrast audit captures:
+  `build/audit-contrast-01-classic-before.png` through
+  `build/audit-contrast-06-royal-after.png`
+- Current-run before/after audit comparison:
+  `build/audit-contrast-comparison.png`
 
 The implementation captures are code-rendered from the exact production
 palettes, geometry, and generated piece masks. Their monospaced font is a close
@@ -42,8 +47,10 @@ No actionable P0, P1, or P2 mismatch remains.
 - Colors and visual tokens: Classic retains navy, cream, teal, cyan, and gold;
   Neon retains midnight, violet, aqua, magenta, and warm-ivory pieces. Royal
   extends the same direction with midnight plum, ivory, burgundy, and brass.
-  Semantic cursor, legal, last-move, and check colors remain distinct in all
-  three palettes.
+  Each solid piece body now measures at least 3.18:1 against both board-square
+  colors after RGB565 quantization; semantic cursor, legal, last-move, and check
+  colors remain distinct in all three palettes. This is a targeted small-icon
+  contrast check, not a claim of full accessibility compliance.
 - Image quality and asset fidelity: all six pieces come from a target-specific
   generated raster sheet, then reduce to fixed two-color 14×14 body/detail masks.
   Solid silhouettes preserve the source identities without a perimeter outline.
@@ -110,6 +117,18 @@ assets, and visible copy are coherent at the target viewport.
   native 240×135 theme views in `build/design-compare-solid-pieces.png` show no
   remaining actionable mismatch.
 
+### Iteration 5
+
+- [P1] The physical-screen review exposed low solid-piece contrast that was not
+  obvious in the enlarged sprite preview. Measured source pairs confirmed
+  Classic white/light at 1.13:1, Neon black/dark at 1.18:1, Royal white/light at
+  1.14:1, and Royal black/dark at 1.81:1.
+- Classic now uses a deeper tournament-gold light square, Neon a brighter violet
+  dark square, and Royal bronze/rose squares. White and black bodies were nudged
+  toward ivory and near-black. All twelve RGB565 piece/square combinations now
+  range from 3.18:1 to 5.67:1 without reintroducing perimeter outlines. Evidence:
+  `build/audit-contrast-comparison.png`.
+
 ## Interaction and Runtime Checks
 
 - Three-way theme cycling is wired in setup and pause and persists through
@@ -132,8 +151,8 @@ assets, and visible copy are coherent at the target viewport.
 
 ## Follow-up Polish
 
-- [P3] Confirm the smallest coordinate labels, muted labels, black-piece detail
-  colors, solid-piece contrast, and short animation timing on the physical LCD
-  under both bright-room and low-light conditions.
+- [P3] Confirm the smallest coordinate labels, muted labels, revised solid-piece
+  contrast, and short animation timing on the physical LCD under both bright-room
+  and low-light conditions.
 
 final result: passed
