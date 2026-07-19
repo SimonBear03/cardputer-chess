@@ -73,9 +73,9 @@ struct ThemePalette {
     std::uint16_t text;
     std::uint16_t muted;
     std::uint16_t whitePiece;
-    std::uint16_t whiteEdge;
+    std::uint16_t whiteDetail;
     std::uint16_t blackPiece;
-    std::uint16_t blackEdge;
+    std::uint16_t blackDetail;
 };
 
 constexpr std::array<ThemePalette, 3> kThemes = {{
@@ -298,7 +298,7 @@ void drawPiece(int x, int y, Piece piece) {
     const bool white = pieceColor(piece) == Color::White;
     const ThemePalette& colors = theme();
     const std::uint16_t body = white ? colors.whitePiece : colors.blackPiece;
-    const std::uint16_t edge = white ? colors.whiteEdge : colors.blackEdge;
+    const std::uint16_t detail = white ? colors.whiteDetail : colors.blackDetail;
     const std::size_t glyphIndex = static_cast<std::size_t>(pieceType(piece)) - 1U;
     const ui::PieceGlyph& glyph = ui::kPieceGlyphs[glyphIndex];
     for (int row = 0; row < ui::kPieceGlyphPixels; ++row) {
@@ -310,13 +310,13 @@ void drawPiece(int x, int y, Piece piece) {
             if (column < ui::kPieceGlyphPixels) {
                 const std::uint16_t bit = static_cast<std::uint16_t>(
                     1U << (ui::kPieceGlyphPixels - 1 - column));
-                if ((glyph.edge[static_cast<std::size_t>(row)] & bit) != 0U) {
-                    occupied = true;
-                    pixelColor = edge;
-                }
-                if ((glyph.fill[static_cast<std::size_t>(row)] & bit) != 0U) {
+                if ((glyph.body[static_cast<std::size_t>(row)] & bit) != 0U) {
                     occupied = true;
                     pixelColor = body;
+                }
+                if ((glyph.detail[static_cast<std::size_t>(row)] & bit) != 0U) {
+                    occupied = true;
+                    pixelColor = detail;
                 }
             }
             if (runStart >= 0 && (!occupied || pixelColor != runColor)) {

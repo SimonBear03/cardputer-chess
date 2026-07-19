@@ -15,9 +15,9 @@ limits.
 - Three persistent visual themes: warm tournament **Classic**, high-contrast
   **Neon**, and burgundy-and-brass **Royal**, switchable from setup or the
   in-game menu
-- Proper generated chess-piece silhouettes reduced to crisp two-color 14×14
-  artwork for the 15-pixel board squares, including a shorter pawn and pointed
-  bishop
+- Proper generated Staunton chess-piece silhouettes reduced to solid two-color
+  14×14 artwork for the 15-pixel board squares, with no space-wasting perimeter
+  outline, a shorter pawn, and a strongly asymmetric knight
 - Eight persistent difficulty levels from Beginner to Maximum
 - Persistent Coach modes: Off, on-demand with `H`, or automatic every human turn
 - Exact top-three analysis with SAN moves, centipawn evaluations, principal

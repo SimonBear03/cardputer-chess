@@ -6,6 +6,8 @@
   `/Users/simon/.codex/generated_images/019f7830-7f59-7980-aa36-07eef070f9cc/exec-bc23ca04-a892-499b-ac61-58cde3fdf3ed.png`
 - Source visual truth, Neon:
   `/Users/simon/.codex/generated_images/019f7830-7f59-7980-aa36-07eef070f9cc/exec-3c7d8b3a-7db9-47db-a20e-2ba966c085c3.png`
+- Source visual truth, solid Staunton pieces:
+  `docs/assets/piece-source-solid-staunton.png`
 - Implementation screenshots:
   `build/ui-preview-classic-game.png`, `build/ui-preview-neon-game.png`,
   `build/ui-preview-royal-game.png`, `build/ui-preview-classic-setup.png`,
@@ -18,6 +20,8 @@
 - Focused board/piece comparison evidence:
   `build/design-compare-classic-board.png` and
   `build/design-compare-neon-board.png`
+- Solid-piece source/reduction/native-view comparison evidence:
+  `build/design-compare-solid-pieces.png`
 
 The implementation captures are code-rendered from the exact production
 palettes, geometry, and generated piece masks. Their monospaced font is a close
@@ -40,11 +44,13 @@ No actionable P0, P1, or P2 mismatch remains.
   extends the same direction with midnight plum, ivory, burgundy, and brass.
   Semantic cursor, legal, last-move, and check colors remain distinct in all
   three palettes.
-- Image quality and asset fidelity: all six pieces come from generated raster
-  artwork, then reduce to fixed two-color 14×14 masks. The pawn occupies only
-  the bottom ten rows while the bishop is taller, pointed, and carries a mitre
-  cut. No piece is represented by a letter, emoji, text symbol, placeholder, or
-  runtime vector drawing.
+- Image quality and asset fidelity: all six pieces come from a target-specific
+  generated raster sheet, then reduce to fixed two-color 14×14 body/detail masks.
+  Solid silhouettes preserve the source identities without a perimeter outline.
+  The pawn occupies only the bottom ten rows, the knight has an asymmetric horse
+  head, the bishop carries a mitre cut, the rook has battlements, the queen has a
+  crown, and the king has a cross. No piece is represented by a letter, emoji,
+  text symbol, placeholder, or runtime vector drawing.
 - Copy and content: setup, game, Coach, and pause labels use concise
   device-appropriate language. `ENTER START` accurately describes the direct
   setup action, and a framed three-swatch selector exposes all persistent themes.
@@ -90,6 +96,20 @@ The revised full-view and focused comparisons found no remaining actionable
 P0/P1/P2 issue. Board coordinates, proportions, palette, hierarchy, generated
 assets, and visible copy are coherent at the target viewport.
 
+### Iteration 4
+
+- [P1] A full contrasting boundary consumed too much of each 14×14 mask and made
+  the pieces visually noisy on the physical LCD. The replacement masks use
+  target-specific generated Staunton silhouettes as solid bodies, reserving the
+  second color for a small identity or base detail rather than tracing the
+  perimeter.
+- [P2] The old pawn, bishop, and knight depended on internal fill/edge changes
+  that weakened their true-size silhouettes. The final pawn is four rows shorter
+  than the major pieces, the bishop has a diagonal mitre cut, and the knight is
+  intentionally asymmetric. The combined source, enlarged reduction, and three
+  native 240×135 theme views in `build/design-compare-solid-pieces.png` show no
+  remaining actionable mismatch.
+
 ## Interaction and Runtime Checks
 
 - Three-way theme cycling is wired in setup and pause and persists through
@@ -112,8 +132,8 @@ assets, and visible copy are coherent at the target viewport.
 
 ## Follow-up Polish
 
-- [P3] Confirm the smallest coordinate labels, muted labels, black-piece edge
-  colors, and short animation timing on the physical LCD under both bright-room
-  and low-light conditions.
+- [P3] Confirm the smallest coordinate labels, muted labels, black-piece detail
+  colors, solid-piece contrast, and short animation timing on the physical LCD
+  under both bright-room and low-light conditions.
 
 final result: passed

@@ -54,9 +54,12 @@ The 36 vetted opening lines compile into 163 unique position/move entries.
 board cursor and move selection, promotion chooser, direct LCD rendering, game
 history, Coach overlay, and the background engine task. Three shared palettes
 provide the Classic, Neon, and Royal themes without duplicating layouts or
-allocating framebuffers. Generated source artwork is reduced to fixed 14×14 edge/fill masks
-in `piece_glyphs.hpp`, so all six piece types have proper silhouettes at a total
-cost of only a few hundred bytes of flash. The engine always searches a private
+allocating framebuffers. Target-sized generated Staunton artwork is reduced to
+fixed 14×14 body/detail masks in `piece_glyphs.hpp`, so all six piece types have
+solid, distinct silhouettes at a total cost of only a few hundred bytes of flash.
+The masks deliberately avoid a full perimeter outline: one contrasting detail
+is reserved for the bishop cut, king cross, and shared base accent instead. The
+engine always searches a private
 position copy, so the player can keep navigating and can play immediately while
 automatic Coach analysis is still winding down.
 
