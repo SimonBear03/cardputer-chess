@@ -50,11 +50,26 @@ The 36 vetted opening lines compile into 163 unique position/move entries.
 
 ### Cardputer application
 
-`src/main.cpp` owns the setup menu, persisted level/color/Coach preferences, board
-cursor and move selection, promotion chooser, direct LCD rendering, game
-history, Coach overlay, and the background engine task. The engine always
-searches a private position copy, so the player can keep navigating and can
-play immediately while automatic Coach analysis is still winding down.
+`src/main.cpp` owns the setup menu, persisted level/color/Coach/theme preferences,
+board cursor and move selection, promotion chooser, direct LCD rendering, game
+history, Coach overlay, and the background engine task. Three shared palettes
+provide the Classic, Neon, and Royal themes without duplicating layouts or
+allocating framebuffers. Generated source artwork is reduced to fixed 14×14 edge/fill masks
+in `piece_glyphs.hpp`, so all six piece types have proper silhouettes at a total
+cost of only a few hundred bytes of flash. The engine always searches a private
+position copy, so the player can keep navigating and can play immediately while
+automatic Coach analysis is still winding down.
+
+The LCD is cleared only when changing screens or themes. Steady-state updates
+redraw the relevant board/menu state inside one display write transaction,
+avoiding the visible flash caused by repeatedly clearing the physical panel.
+Short intro, theme-wipe, move/check, and result animations use a non-blocking
+`millis()` state machine and redraw at roughly 24 frames per second. They keep
+only a few scalar fields and never allocate a full-screen RGB framebuffer.
+
+The board uses 15×15-pixel squares, leaving native-font gutters for file and
+rank labels. Coordinate labels and piece placement both follow the human-side
+orientation, so the bottom-left label changes correctly when playing Black.
 
 ## Controls
 
@@ -89,6 +104,8 @@ the strongest root move. Scores are shown from the human side's perspective.
 For alternatives the UI reports centipawn loss versus line one; after a played
 move it reports a quality label when the move was one of the analyzed three,
 or honestly reports `Outside top 3` when no exact candidate score exists.
+SAN/PV formatting reuses a dedicated application-owned position instead of
+placing another four-kilobyte `Position` on the UI task's stack.
 
 ## Strength levels
 

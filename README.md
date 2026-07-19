@@ -9,9 +9,15 @@ limits.
 
 - Complete legal chess: castling, en passant, promotion, checkmate, stalemate,
   repetition, fifty-move, and insufficient-material outcomes
-- Arrow-key square navigation with highlighted origin, legal destinations,
-  last move, and check
+- Arrow-key square navigation with orientation-aware `a`–`h` / `1`–`8`
+  coordinates, highlighted origin, legal destinations, last move, and check
 - Play as White, Black, or a randomly selected side
+- Three persistent visual themes: warm tournament **Classic**, high-contrast
+  **Neon**, and burgundy-and-brass **Royal**, switchable from setup or the
+  in-game menu
+- Proper generated chess-piece silhouettes reduced to crisp two-color 14×14
+  artwork for the 15-pixel board squares, including a shorter pawn and pointed
+  bishop
 - Eight persistent difficulty levels from Beginner to Maximum
 - Persistent Coach modes: Off, on-demand with `H`, or automatic every human turn
 - Exact top-three analysis with SAN moves, centipawn evaluations, principal
@@ -21,6 +27,10 @@ limits.
   36-line compact opening book
 - Responsive dual-core firmware: the engine searches a private position on a
   background FreeRTOS task
+- Direct, transition-aware LCD rendering without a RAM-heavy full-screen
+  framebuffer or steady-state screen clears
+- Non-blocking intro, theme, move/check, and game-result animations using only
+  a tiny state record
 - Host-side perft, rule, and search tests
 
 ## Controls
@@ -32,7 +42,7 @@ aliases.
 | Input | Action |
 | --- | --- |
 | Arrows | Move board cursor or menu selection |
-| Enter / Space | Select or confirm |
+| Enter / Space | Start from setup; select or confirm in game |
 | Backspace / Esc | Cancel selection / close chooser |
 | Tab | Open or close the in-game menu |
 | U | Undo the last human turn |
@@ -49,13 +59,12 @@ make benchmark
 make uci
 ```
 
-Firmware validation and upload use PlatformIO without requiring a persistent
-global install:
+Firmware validation and upload use the shared PlatformIO installation:
 
 ```sh
-uvx --with pip platformio run
-uvx --with pip platformio run --target upload
-uvx --with pip platformio device monitor
+platformio run
+platformio run --target upload
+platformio device monitor
 ```
 
 `make benchmark` runs the fixed 64 KiB-hash performance suite. The UCI binary

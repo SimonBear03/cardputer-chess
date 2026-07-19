@@ -118,6 +118,7 @@ class Position {
     Position();
 
     static Position startPosition();
+    void resetToStartPosition();
     static std::optional<Position> fromFen(std::string_view fen,
                                            std::string* error = nullptr);
 

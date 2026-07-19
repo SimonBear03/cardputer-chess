@@ -23,6 +23,10 @@ firmware commit and any failures in the release notes or issue tracker.
 - Change all eight levels and reboot; confirm the last side choice and level
   persist.
 - Change Coach through Off, On demand, and Always; reboot and confirm it persists.
+- Change Theme among Classic, Neon, and Royal from setup and the game menu; reboot and
+  confirm it persists.
+- On setup, confirm Up/Down changes rows, Left/Right changes values, and Enter or
+  Space starts immediately from every row.
 - Navigate with `Fn` plus each printed arrow key.
 - Navigate again with bare `;`, `,`, `.`, `/`, then with `W/A/S/D`.
 - Confirm with Enter and Space.
@@ -34,6 +38,11 @@ firmware commit and any failures in the release notes or issue tracker.
 ## 3. Board interaction
 
 - Confirm the board is oriented with the human side at the bottom.
+- Confirm `a`–`h` and `1`–`8` labels are legible and rotate correctly when
+  playing Black.
+- Confirm pawns, knights, bishops, rooks, queens, and kings use distinct piece
+  silhouettes in all themes, with the pawn clearly shorter than the pointed
+  bishop and both colors readable on light and dark squares.
 - Select several piece types and verify only legal destination squares light up.
 - Move onto a highlighted square and confirm origin, destination, and history
   update.
@@ -53,6 +62,8 @@ firmware commit and any failures in the release notes or issue tracker.
   human turn is undone.
 - In On-demand mode, press `H` on a human turn and confirm three unique legal
   SAN candidates, evaluations, PV text, and loss versus the best line appear.
+- Repeatedly open, browse, close, and reopen Coach; confirm PV formatting never
+  resets or reboots the device.
 - In Always mode, confirm Coach analysis begins on each human turn without
   blocking cursor movement; play immediately and confirm the opponent search
   starts cleanly after Coach cancellation.
@@ -67,6 +78,10 @@ firmware commit and any failures in the release notes or issue tracker.
 - Play at least one 40-move game at Maximum level.
 - Confirm there are no spontaneous resets, engine-error messages, frozen keys,
   or persistent display artifacts.
+- Navigate continuously between setup, game, Coach, promotion, and pause screens;
+  confirm there is no periodic full-screen flicker or blank flash.
+- Confirm the game-intro scan, theme wipe, move/check pulse, and win/loss/draw
+  celebration are brief, smooth, and do not block keyboard input.
 - Check that the case remains comfortable to hold during repeated ten-second
   searches.
 - Run once on battery and confirm expected brightness and acceptable battery

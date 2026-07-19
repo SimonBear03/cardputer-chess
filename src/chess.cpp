@@ -10,9 +10,6 @@
 namespace cardputer_chess {
 namespace {
 
-constexpr char kStartFen[] =
-    "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
-
 constexpr int colorIndex(Color color) { return color == Color::White ? 0 : 1; }
 constexpr bool onBoard(int square) { return square >= 0 && square < 64; }
 constexpr int fileOf(int square) { return square & 7; }
@@ -111,8 +108,27 @@ void Position::clear() {
 }
 
 Position Position::startPosition() {
-    const auto position = fromFen(kStartFen);
-    return position.has_value() ? *position : Position{};
+    Position position;
+    position.resetToStartPosition();
+    return position;
+}
+
+void Position::resetToStartPosition() {
+    clear();
+    constexpr std::array<PieceType, 8> backRank = {
+        PieceType::Rook, PieceType::Knight, PieceType::Bishop, PieceType::Queen,
+        PieceType::King, PieceType::Bishop, PieceType::Knight, PieceType::Rook,
+    };
+    for (std::size_t file = 0; file < backRank.size(); ++file) {
+        board_[file] = makePiece(Color::White, backRank[file]);
+        board_[8U + file] = makePiece(Color::White, PieceType::Pawn);
+        board_[48U + file] = makePiece(Color::Black, PieceType::Pawn);
+        board_[56U + file] = makePiece(Color::Black, backRank[file]);
+    }
+    castlingRights_ = static_cast<std::uint8_t>(WhiteKingSide | WhiteQueenSide |
+                                                BlackKingSide | BlackQueenSide);
+    computeKey();
+    pushRepetitionKey();
 }
 
 std::optional<Position> Position::fromFen(std::string_view fen, std::string* error) {

@@ -89,6 +89,16 @@ void testFenAndCoordinates() {
     expect(!error.empty(), "invalid FEN reports reason");
 }
 
+void testResetToStartPosition() {
+    Position position = Position::startPosition();
+    play(position, "e2e4");
+    play(position, "e7e5");
+    position.resetToStartPosition();
+    expect(position.toFen() == "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+           "in-place reset restores the initial position");
+    expect(position.isRepetition(1), "in-place reset seeds repetition history");
+}
+
 void testPerft() {
     Position start = Position::startPosition();
     expectEqual(perft(start, 1), UINT64_C(20), "start perft depth 1");
@@ -431,6 +441,7 @@ void testLevelsAndEngine() {
 
 int main() {
     testFenAndCoordinates();
+    testResetToStartPosition();
     testPerft();
     testMakeUnmakeIdentity();
     testCastling();
