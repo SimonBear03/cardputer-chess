@@ -98,8 +98,10 @@ assets, and visible copy are coherent at the target viewport.
   settings.
 - Setup, playing, promotion, Coach, pause, and game-over screens use the active
   palette and the shared generated piece assets.
-- Intro, theme-wipe, move/check, and result animations use a 42 ms non-blocking
+- Intro, move/check, and result animations use a 42 ms non-blocking
   update cadence without a framebuffer or delay loop.
+- Theme selection uses one complete redraw rather than an overlay animation,
+  preventing residual scanline fragments in partially repainted menu gaps.
 - The primary interaction paths compile in the final firmware build; no build
   or simulator errors were present.
 - Browser and browser-console checks are not applicable to this embedded LCD

@@ -63,9 +63,12 @@ automatic Coach analysis is still winding down.
 The LCD is cleared only when changing screens or themes. Steady-state updates
 redraw the relevant board/menu state inside one display write transaction,
 avoiding the visible flash caused by repeatedly clearing the physical panel.
-Short intro, theme-wipe, move/check, and result animations use a non-blocking
+Short intro, move/check, and result animations use a non-blocking
 `millis()` state machine and redraw at roughly 24 frames per second. They keep
 only a few scalar fields and never allocate a full-screen RGB framebuffer.
+Theme changes deliberately skip animation: they clear once and repaint the
+complete active screen in the new palette so no scanline can remain in an
+otherwise untouched menu gap.
 
 The board uses 15×15-pixel squares, leaving native-font gutters for file and
 rank labels. Coordinate labels and piece placement both follow the human-side

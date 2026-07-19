@@ -80,7 +80,8 @@ firmware commit and any failures in the release notes or issue tracker.
   or persistent display artifacts.
 - Navigate continuously between setup, game, Coach, promotion, and pause screens;
   confirm there is no periodic full-screen flicker or blank flash.
-- Confirm the game-intro scan, theme wipe, move/check pulse, and win/loss/draw
+- Confirm theme changes redraw cleanly without scanlines or residual pixels.
+- Confirm the game-intro scan, move/check pulse, and win/loss/draw
   celebration are brief, smooth, and do not block keyboard input.
 - Check that the case remains comfortable to hold during repeated ten-second
   searches.

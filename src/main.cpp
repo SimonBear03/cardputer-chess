@@ -51,7 +51,6 @@ enum class SearchPurpose : std::uint8_t { Opponent, Coach };
 enum class AnimationKind : std::uint8_t {
     None,
     GameIntro,
-    ThemeWipe,
     MoveFeedback,
     Win,
     Loss,
@@ -210,7 +209,7 @@ void cycleTheme(int direction) {
     value = (value + (direction < 0 ? 2 : 1)) % 3;
     themeMode = static_cast<ThemeMode>(value);
     hasDrawnScreen = false;
-    startAnimation(AnimationKind::ThemeWipe, 240);
+    animation = UiAnimation{};
 }
 
 void formatScore(std::int16_t scoreCp, char* output, std::size_t outputSize) {
@@ -447,7 +446,7 @@ void drawPanel() {
 
 void drawGame() {
     drawBoard();
-    M5Cardputer.Display.fillRect(130, 0, 3, 135, theme().background);
+    M5Cardputer.Display.fillRect(129, 0, 4, 135, theme().background);
     drawPanel();
 }
 
@@ -657,14 +656,6 @@ void drawAnimation() {
         if (scanY > kBoardY) {
             M5Cardputer.Display.drawFastHLine(kBoardX, scanY - 1, 8 * kSquarePixels,
                                               colors.secondary);
-        }
-        return;
-    }
-    if (animation.kind == AnimationKind::ThemeWipe) {
-        const int scanX = static_cast<int>(elapsed * 239U / animation.durationMs);
-        M5Cardputer.Display.drawFastVLine(scanX, 0, 135, colors.accent);
-        if (scanX > 0) {
-            M5Cardputer.Display.drawFastVLine(scanX - 1, 0, 135, colors.secondary);
         }
         return;
     }

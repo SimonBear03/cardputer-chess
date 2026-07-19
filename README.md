@@ -29,7 +29,7 @@ limits.
   background FreeRTOS task
 - Direct, transition-aware LCD rendering without a RAM-heavy full-screen
   framebuffer or steady-state screen clears
-- Non-blocking intro, theme, move/check, and game-result animations using only
+- Non-blocking intro, move/check, and game-result animations using only
   a tiny state record
 - Host-side perft, rule, and search tests
 
