@@ -27,6 +27,11 @@
   `build/audit-contrast-06-royal-after.png`
 - Current-run before/after audit comparison:
   `build/audit-contrast-comparison.png`
+- Current-run checkerboard-balance captures:
+  `build/audit-board-balance-01-classic-before.png` through
+  `build/audit-board-balance-06-royal-after.png`
+- Current-run checkerboard before/after comparison:
+  `build/audit-board-balance-comparison.png`
 
 The implementation captures are code-rendered from the exact production
 palettes, geometry, and generated piece masks. Their monospaced font is a close
@@ -47,17 +52,19 @@ No actionable P0, P1, or P2 mismatch remains.
 - Colors and visual tokens: Classic retains navy, cream, teal, cyan, and gold;
   Neon retains midnight, violet, aqua, magenta, and warm-ivory pieces. Royal
   extends the same direction with midnight plum, ivory, burgundy, and brass.
-  Each solid piece body now measures at least 3.18:1 against both board-square
-  colors after RGB565 quantization; semantic cursor, legal, last-move, and check
-  colors remain distinct in all three palettes. This is a targeted small-icon
-  contrast check, not a claim of full accessibility compliance.
+  Classic now balances all three competing relationships: its light/dark squares
+  measure 2.40:1 apart after RGB565 quantization, while its weakest piece/square
+  pair remains 2.56:1. Neon and Royal keep their user-approved palettes from the
+  prior contrast pass. Semantic cursor, legal, last-move, and check colors remain
+  distinct in all three themes. This is a targeted embedded-LCD contrast check,
+  not a claim of full accessibility compliance.
 - Image quality and asset fidelity: all six pieces come from a target-specific
   generated raster sheet, then reduce to fixed two-color 14×14 body/detail masks.
   Solid silhouettes preserve the source identities without a perimeter outline.
   The pawn occupies only the bottom ten rows, the knight has an asymmetric horse
   head, the bishop carries a mitre cut, the rook has battlements, the queen has a
-  crown, and the king has a cross. No piece is represented by a letter, emoji,
-  text symbol, placeholder, or runtime vector drawing.
+  crown, and the king has a solid same-color cross. No piece is represented by a
+  letter, emoji, text symbol, placeholder, or runtime vector drawing.
 - Copy and content: setup, game, Coach, and pause labels use concise
   device-appropriate language. `ENTER START` accurately describes the direct
   setup action, and a framed three-swatch selector exposes all persistent themes.
@@ -128,6 +135,24 @@ assets, and visible copy are coherent at the target viewport.
   toward ivory and near-black. All twelve RGB565 piece/square combinations now
   range from 3.18:1 to 5.67:1 without reintroducing perimeter outlines. Evidence:
   `build/audit-contrast-comparison.png`.
+
+### Iteration 6
+
+- [P1] Raising all piece/square pairs over 3:1 compressed both checkerboard tones
+  into the same middle luminance range. The pieces improved, but the light and
+  dark squares became difficult to distinguish on the physical LCD.
+- The final change is deliberately scoped to Classic, the only theme reported as
+  unclear: bright tournament gold replaces the mid-gold square and deep teal
+  replaces the mid-teal square. After RGB565 quantization, Classic's square-pair
+  contrast rises from 1.16:1 to 2.40:1 while the weakest piece/square pair remains
+  2.56:1. Neon and Royal remain unchanged from the approved prior pass. Evidence:
+  `build/audit-board-balance-comparison.png`.
+- [P2] The king's cross used the inverted detail color and appeared pasted onto
+  the body. The top cross pixels now use the body color; only the base retains
+  the shared contrast accent.
+- [P2] The `H COACH`/`TAB MENU` row visually touched `U UNDO` at the bottom of
+  the panel. The first action row moves up two pixels, leaving a clean blank row
+  while the undo hint remains fully inside the 135-pixel viewport.
 
 ## Interaction and Runtime Checks
 

@@ -78,11 +78,11 @@ struct ThemePalette {
     std::uint16_t blackDetail;
 };
 
-// Keep every solid piece body above roughly 3:1 contrast against both board
-// square colors. At 14 pixels the silhouette, not an outline, must do the work.
+// Classic needs stronger luminance separation between its gold and teal squares;
+// Neon and Royal retain their user-approved hue-driven checkerboards.
 constexpr std::array<ThemePalette, 3> kThemes = {{
     {"Classic", rgb565(4, 20, 38), rgb565(9, 36, 58), rgb565(17, 55, 76),
-     rgb565(158, 125, 70), rgb565(65, 130, 126), rgb565(212, 162, 42),
+     rgb565(190, 150, 83), rgb565(41, 100, 97), rgb565(212, 162, 42),
      rgb565(74, 207, 211), rgb565(113, 158, 142), rgb565(196, 55, 62),
      rgb565(231, 177, 62), rgb565(66, 205, 221), rgb565(246, 239, 216),
      rgb565(139, 165, 174), rgb565(255, 247, 220), rgb565(45, 46, 44),
@@ -441,8 +441,8 @@ void drawPanel() {
         historyY += 9;
     }
     M5Cardputer.Display.drawFastHLine(kPanelX + 4, 116, kPanelWidth - 8, colors.surfaceStrong);
-    drawText(kPanelX + 4, 120, "H COACH", colors.secondary, 1);
-    drawText(kPanelX + 58, 120, "TAB MENU", colors.muted, 1);
+    drawText(kPanelX + 4, 118, "H COACH", colors.secondary, 1);
+    drawText(kPanelX + 58, 118, "TAB MENU", colors.muted, 1);
     drawText(kPanelX + 4, 127, "U UNDO", colors.muted, 1);
 }
 

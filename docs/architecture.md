@@ -57,9 +57,9 @@ provide the Classic, Neon, and Royal themes without duplicating layouts or
 allocating framebuffers. Target-sized generated Staunton artwork is reduced to
 fixed 14×14 body/detail masks in `piece_glyphs.hpp`, so all six piece types have
 solid, distinct silhouettes at a total cost of only a few hundred bytes of flash.
-The masks deliberately avoid a full perimeter outline: one contrasting detail
-is reserved for the bishop cut, king cross, and shared base accent instead. The
-engine always searches a private
+The masks deliberately avoid a full perimeter outline: the second color is
+reserved for the bishop cut and shared base accent, while the king's cross stays
+part of its solid body. The engine always searches a private
 position copy, so the player can keep navigating and can play immediately while
 automatic Coach analysis is still winding down.
 
