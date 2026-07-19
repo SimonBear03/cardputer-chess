@@ -1,8 +1,21 @@
 # Validation
 
-This page records the current software validation baseline. It is evidence for
-the checked-in revision, not a substitute for testing a release on the physical
-device.
+This page records the current software validation baseline. It is written for
+contributors who want to verify a change before flashing or publishing it.
+
+## Current result at a glance
+
+| Check | Result |
+| --- | --- |
+| Host rules and engine tests | 217 assertions passed |
+| AddressSanitizer and UBSan | 217 assertions passed |
+| Cardputer-Adv firmware build | Passed |
+| Static RAM | 176,084 / 327,680 bytes (53.7%) |
+| Flash image | 553,029 / 3,342,336 bytes (16.5%) |
+| USB upload | Passed with verified hashes and hard reset |
+
+These results support the checked-in code, but they do not replace looking at
+the real LCD and pressing the physical keys.
 
 ## Host rules and engine tests
 
@@ -48,12 +61,11 @@ Run:
 platformio run
 ```
 
-The validated toolchain uses PlatformIO Core 6.1.19, Espressif32 platform
-6.12.0, Arduino-ESP32 2.0.17, and the M5Cardputer Git tag 1.2.0. The current
-release build succeeds for the ESP32-S3FN8 target with:
+The project pins Espressif32 platform 6.12.0 and the M5Cardputer Git tag 1.2.0.
+The current release build succeeds for the ESP32-S3FN8 target with:
 
 - Static RAM: 176,084 / 327,680 bytes (53.7%)
-- Flash image: 553,201 / 3,342,336 bytes (16.6%)
+- Flash image: 553,029 / 3,342,336 bytes (16.5%)
 - Output: `.pio/build/cardputer-adv/firmware.bin`
 
 The 64 KiB transposition table is allocated once at runtime and is therefore
@@ -62,12 +74,11 @@ FreeRTOS task stack and fixed-capacity working arrays; it does not allocate in
 the recursive search path. Opponent and Coach analysis share the same engine
 and task rather than allocating a second search instance.
 
-The UI keeps its large reusable `Position` objects in static application storage,
-including the notation copy used by the Coach overlay. This avoids overflowing
-the Arduino loop task while formatting a principal variation. All three visual
-themes share the same 14×14 two-color piece masks. Theme selection, board
-coordinates, and the non-blocking animation state add no dynamic allocation or
-framebuffer.
+The UI keeps its large reusable `Position` objects in static application
+storage, including the notation copy used by the Coach overlay. This avoids
+overflowing the Arduino loop task while formatting a continuation line. All
+three themes share the same 14×14 two-color piece masks. Theme selection, board
+coordinates, and animations do not require a framebuffer or dynamic allocation.
 
 ## Independent cross-check
 
@@ -83,7 +94,7 @@ table, and application hashes all verified, and the upload completed with a
 hard reset. A short 115200-baud monitor window showed no panic or repeated boot
 output.
 
-That smoke check does not replace the operator walkthrough: exact LCD colors,
-small-text and piece legibility, physical key behavior, repeated Coach-overlay
-use, sustained Maximum/MultiPV searches, battery draw, and thermals still need
-the checks in [hardware-test-checklist.md](hardware-test-checklist.md).
+That smoke check does not replace the operator walkthrough. Exact LCD colors,
+small text, piece and square legibility, physical keys, repeated Coach use,
+sustained Maximum-level searches, battery draw, and temperature still need the
+checks in [hardware-test-checklist.md](hardware-test-checklist.md).

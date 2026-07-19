@@ -1,7 +1,8 @@
 # Cardputer-Adv hardware test checklist
 
-Use this checklist before calling a firmware binary device-validated. Record the
-firmware commit and any failures in the release notes or issue tracker.
+Use this full checklist before calling a firmware release device-validated. For
+a quick personal test, sections 1–3 cover flashing, controls, and the display.
+Record the firmware commit and any failures when testing a release.
 
 ## 1. Build and flash
 
@@ -10,7 +11,7 @@ firmware commit and any failures in the release notes or issue tracker.
 - Build and upload:
 
   ```sh
-  uvx --with pip platformio run --target upload
+  platformio run --target upload
   ```
 
 - If automatic download mode fails, switch the device `OFF`, hold `G0`, apply
@@ -23,8 +24,8 @@ firmware commit and any failures in the release notes or issue tracker.
 - Change all eight levels and reboot; confirm the last side choice and level
   persist.
 - Change Coach through Off, On demand, and Always; reboot and confirm it persists.
-- Change Theme among Classic, Neon, and Royal from setup and the game menu; reboot and
-  confirm it persists.
+- Change Theme among Classic, Neon, and Royal from setup and the game menu;
+  reboot and confirm it persists.
 - On setup, confirm Up/Down changes rows, Left/Right changes values, and Enter or
   Space starts immediately from every row.
 - Navigate with `Fn` plus each printed arrow key.
@@ -43,6 +44,10 @@ firmware commit and any failures in the release notes or issue tracker.
 - Confirm pawns, knights, bishops, rooks, queens, and kings use distinct piece
   silhouettes in all themes, with the pawn clearly shorter than the pointed
   bishop and both colors readable on light and dark squares.
+- In Classic, confirm the gold and teal squares are obviously different while
+  both white and black pieces remain readable.
+- Confirm the king's cross uses the same body color as the rest of the king.
+- Confirm there is visible space between the `H COACH` and `U UNDO` footer rows.
 - Select several piece types and verify only legal destination squares light up.
 - Move onto a highlighted square and confirm origin, destination, and history
   update.
@@ -61,7 +66,8 @@ firmware commit and any failures in the release notes or issue tracker.
 - During a search, press `U`; confirm the pending search stops and the complete
   human turn is undone.
 - In On-demand mode, press `H` on a human turn and confirm three unique legal
-  SAN candidates, evaluations, PV text, and loss versus the best line appear.
+  move suggestions, evaluations, short continuation lines, and loss versus the
+  best line appear.
 - Repeatedly open, browse, close, and reopen Coach; confirm PV formatting never
   resets or reboots the device.
 - In Always mode, confirm Coach analysis begins on each human turn without

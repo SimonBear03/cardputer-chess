@@ -1,5 +1,15 @@
 # Architecture
 
+This document explains the implementation for contributors. If you only want
+to install and play the game, start with the [README](../README.md).
+
+At a high level, the project has three parts:
+
+1. A portable chess-rules library.
+2. A portable chess engine and Coach.
+3. The Cardputer application that draws the screen, reads keys, saves settings,
+   and runs engine work in the background.
+
 ## Product boundary
 
 Cardputer Chess is an offline human-versus-engine chess application for the
@@ -59,9 +69,9 @@ fixed 14×14 body/detail masks in `piece_glyphs.hpp`, so all six piece types hav
 solid, distinct silhouettes at a total cost of only a few hundred bytes of flash.
 The masks deliberately avoid a full perimeter outline: the second color is
 reserved for the bishop cut and shared base accent, while the king's cross stays
-part of its solid body. The engine always searches a private
-position copy, so the player can keep navigating and can play immediately while
-automatic Coach analysis is still winding down.
+part of its solid body. The engine always searches a private position copy, so
+the player can keep navigating and can play immediately while automatic Coach
+analysis is still winding down.
 
 The LCD is cleared only when changing screens or themes. Steady-state updates
 redraw the relevant board/menu state inside one display write transaction,
