@@ -101,3 +101,35 @@ Against the saved original `afe3bdc` engine, the final candidate scored 17
 wins, 14 draws, and 1 loss over 32 paired games at an equal 50 ms per move:
 **24/32, or 75.0%**. A bishop-development bonus and other intermediate ideas
 were rejected when they reduced oracle or match results.
+
+## Rating status and target
+
+Cardputer Chess does not yet claim an absolute Elo. The 75% equal-time score is
+about **+191 Elo relative to the saved original build** under the standard
+rating formula, but 32 games leave a wide uncertainty interval and say nothing
+about an external human rating pool. Likewise, the TSCP and Fairy-Max results
+are useful regression tests, not an honest conversion to human Elo.
+
+The next calibration milestone is a paired gauntlet against Stockfish with
+`UCI_LimitStrength` enabled and `UCI_Elo` stepped upward from its
+[documented minimum](https://official-stockfish.github.io/docs/stockfish-wiki/Stockfish-FAQ.html#how-do-skill-level-and-uci_elo-work).
+Results must record the Stockfish version, opening set, time or node control,
+hash, game cap, and confidence interval. Host movetime measures the portable
+engine on the Mac; a Cardputer-specific rating additionally needs the physical
+device's nodes-per-second so the host runner can reproduce its real search
+budget.
+
+The match runner accepts repeatable opponent options for that ladder:
+
+```sh
+uv run --with python-chess tools/match.py \
+  --cardputer ./build/cardputer_chess_uci \
+  --opponent /path/to/stockfish --movetime-ms 100 \
+  --opponent-option UCI_LimitStrength=true \
+  --opponent-option UCI_Elo=1320
+```
+
+The engineering target for the next strength release is **+150 to +250 Elo at
+the same search budget and 64 KiB hash**, accepted only through paired matches
+and the oracle suite. This is deliberately a relative target until the external
+gauntlet produces a reproducible absolute baseline.

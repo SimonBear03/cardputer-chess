@@ -7,10 +7,13 @@ Cardputer-Adv. You play against the built-in engine using the keyboard and the
 ## Play your first game
 
 1. Turn on the Cardputer-Adv.
-2. On the setup screen, use Up/Down to choose a setting and Left/Right to change
-   it.
-3. Choose your side, difficulty, Coach mode, and theme.
-4. Press Enter or Space from any setup row to start.
+2. Choose **New Game** on the home screen. If a saved match exists,
+   **Continue** is selected by default instead.
+3. On the New Match screen, use Up/Down to move through Play As, Level, Coach,
+   and Theme. The current setting is large; its neighboring settings are shown
+   above and below in smaller, dimmed text.
+4. Use Left/Right to change the value inside the visible `< >` arrows, then
+   press Enter or Space from any setting to play.
 5. Move the board cursor with the arrow keys. Press Enter or Space once to pick
    up a piece and again to place it on a highlighted legal square.
 
@@ -19,9 +22,10 @@ you play as Black, so your pieces always begin at the bottom of the screen.
 
 The current game is saved automatically after every completed move and undo.
 Turn the Cardputer off whenever you need to put it away; the next boot returns
-directly to the same game. If it was the engine's turn, thinking restarts from
-the restored position. Choosing New Game from the game menu or result screen
-clears the old game and returns to setup.
+to the home screen with **Continue** selected. Opening New Match does not erase
+the saved game; it is replaced only after you press Enter to start the new
+match. If the restored position belongs to the engine, thinking restarts after
+you choose Continue.
 
 ## Controls
 
@@ -54,6 +58,19 @@ Coach searches animate three tiny status dots without repainting the board. When
 Coach analysis is ready, the best move appears as `NEXT <move>` in the side
 panel; press `H` to inspect all three suggestions.
 
+## Difficulty scale
+
+The number is the quickest way to compare difficulty; the name makes each step
+easier to remember.
+
+| Level | Name | Level | Name |
+| ---: | --- | ---: | --- |
+| 1 | Beginner | 6 | Strong |
+| 2 | Easy | 7 | Advanced |
+| 3 | Casual | 8 | Expert |
+| 4 | Club | 9 | Master |
+| 5 | Skilled | 10 | Maximum |
+
 ## Reading chess moves
 
 The move history and Coach use Standard Algebraic Notation:
@@ -71,14 +88,16 @@ See [the beginner notation guide](docs/chess-notation.md) for examples such as
 - Full legal chess, including castling, en passant, promotion, repetition,
   fifty-move draws, and insufficient-material draws
 - Play as White, Black, or a randomly selected side
-- Eight saved difficulty levels from Beginner to Maximum
+- Ten numbered difficulty levels from **1 Beginner** through **9 Master** and
+  **10 Maximum**
 - Coach modes: Off, on demand with `H`, or automatic on every human turn
 - Three ranked Coach suggestions with evaluations and short continuation lines
 - A compact opening book and a bounded chess engine designed for the ESP32-S3
-- Automatic power-safe resume from the last completed move
+- Power-safe Continue from the last completed move
 - Responsive background search, so menus and the board remain usable while the
   engine thinks
-- Localized thinking animation plus high-contrast move, check, and result feedback
+- Localized thinking, match-start, strong-move, and result animations that do
+  not repaint the board
 - Host-side rule, perft, search, and memory-safety tests
 
 ## Build and flash

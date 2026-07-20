@@ -10,7 +10,7 @@
 
 namespace cardputer_chess {
 
-constexpr int kLevelCount = 8;
+constexpr int kLevelCount = 10;
 constexpr int kMaxSearchPly = 48;
 constexpr int kMaxAnalysisLines = 3;
 

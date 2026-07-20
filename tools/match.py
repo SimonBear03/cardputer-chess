@@ -42,6 +42,13 @@ def parse_args() -> argparse.Namespace:
         choices=("uci", "xboard", "xboard-force", "xboard-force-legacy"),
         default="uci",
     )
+    parser.add_argument(
+        "--opponent-option",
+        action="append",
+        default=[],
+        metavar="NAME=VALUE",
+        help="repeatable UCI option for the opponent",
+    )
     parser.add_argument("--depth", type=int, default=5)
     parser.add_argument("--movetime-ms", type=int, default=0)
     parser.add_argument("--opening-pairs", type=int, default=len(OPENINGS))
@@ -55,6 +62,16 @@ def launch(command: str, protocol: str, debug: bool = False) -> chess.engine.Sim
     if protocol == "xboard":
         return chess.engine.SimpleEngine.popen_xboard(argv, debug=debug)
     return chess.engine.SimpleEngine.popen_uci(argv, debug=debug)
+
+
+def parse_options(raw_options: list[str]) -> dict[str, str]:
+    options: dict[str, str] = {}
+    for raw in raw_options:
+        name, separator, value = raw.partition("=")
+        if not separator or not name.strip():
+            raise SystemExit(f"invalid --opponent-option {raw!r}; use NAME=VALUE")
+        options[name.strip()] = value.strip()
+    return options
 
 
 class ForceModeXBoard:
@@ -195,6 +212,8 @@ def main() -> int:
     if args.movetime_ms > 0 and args.opponent_protocol.startswith("xboard-force"):
         parser_message = "--movetime-ms currently requires a UCI/setboard opponent"
         raise SystemExit(parser_message)
+    if args.opponent_option and args.opponent_protocol != "uci":
+        raise SystemExit("--opponent-option requires a UCI opponent")
     if args.trace:
         logging.basicConfig(level=logging.DEBUG)
     if args.trace:
@@ -210,6 +229,7 @@ def main() -> int:
         )
     else:
         opponent = launch(args.opponent, args.opponent_protocol, args.trace)
+        opponent.configure(parse_options(args.opponent_option))
     if args.trace:
         print("engines ready", flush=True)
     wins = draws = losses = 0

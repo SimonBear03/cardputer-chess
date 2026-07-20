@@ -16,25 +16,33 @@ Record the firmware commit and any failures when testing a release.
 
 - If automatic download mode fails, switch the device `OFF`, hold `G0`, apply
   USB power, release `G0`, and retry the upload.
-- Confirm the setup screen appears without a reboot loop or corrupted pixels.
+- Confirm the Home screen appears without a reboot loop or corrupted pixels.
+- With no saved match, confirm New Game is the only action. With a saved match,
+  confirm Continue is selected above New Game.
 - Start a game, complete several moves, switch the Cardputer off, and switch it
-  back on. Confirm it boots directly to the same board, side, move history,
-  last-move highlight, and undo state.
+  back on. Confirm it boots to Home; press Enter on Continue and verify the same
+  board, side, move history, last-move highlight, and undo state.
 - Switch it off while the engine is thinking immediately after a human move.
   Confirm the completed human move is restored and engine thinking restarts.
-- Choose New Game from the game menu, reboot before starting another game, and
-  confirm the old game is not resumed.
+- Choose New Game from the game menu, return Home before starting another game,
+  and confirm Continue still opens the old match. Start the replacement match,
+  reboot, and confirm Continue now opens the new position.
 
 ## 2. Keyboard and menus
 
 - Change **Play as** through White, Black, and Random.
-- Change all eight levels and reboot; confirm the last side choice and level
-  persist.
+- Change all ten numbered levels and reboot; confirm the last side choice and
+  level persist. Upgrade from an eight-level build and confirm its Master or
+  Maximum preference migrates to 9 Master or 10 Maximum.
 - Change Coach through Off, On demand, and Always; reboot and confirm it persists.
 - Change Theme among Classic, Neon, and Royal from setup and the game menu;
   reboot and confirm it persists.
-- On setup, confirm Up/Down changes rows, Left/Right changes values, and Enter or
-  Space starts immediately from every row.
+- On Home, confirm Up/Down selects Continue or New Game and Enter opens it.
+- On New Match, confirm the active setting stays large and centered, its previous
+  and next settings are smaller and dimmed, Up/Down stops at the ends, and
+  Left/Right changes the value inside `< >`.
+- Confirm Enter or Space starts immediately from every New Match setting, while
+  Backspace/Esc returns Home without erasing a saved game.
 - Navigate with `Fn` plus each printed arrow key.
 - Navigate again with bare `;`, `,`, `.`, `/`, then with `W/A/S/D`.
 - Confirm with Enter and Space.
@@ -66,7 +74,7 @@ Record the firmware commit and any failures when testing a release.
 
 - Start as White and as Black; when playing Black, confirm the engine makes the
   opening move without blocking keyboard/UI updates.
-- Try Beginner, Club, Expert, and Maximum. Confirm the UI remains responsive
+- Try 1 Beginner, 4 Club, 8 Expert, 9 Master, and 10 Maximum. Confirm the UI remains responsive
   while the three `ENGINE THINK` dots animate and the engine eventually makes a
   legal move. Confirm the board itself remains visually still between moves.
 - Play at least ten non-book engine turns on Maximum and confirm no task-watchdog
@@ -95,15 +103,15 @@ Record the firmware commit and any failures when testing a release.
 - Play at least one 40-move game at Maximum level.
 - Confirm there are no spontaneous resets, engine-error messages, frozen keys,
   or persistent display artifacts.
-- Navigate continuously between setup, game, Coach, promotion, and pause screens;
+- Navigate continuously between Home, New Match, game, Coach, promotion, and pause screens;
   confirm there is no periodic full-screen flicker or blank flash.
 - Hold or repeatedly tap board and menu navigation keys; confirm only the
   changed squares or rows update and the rest of the frame stays visually still.
 - Confirm theme changes redraw cleanly without scanlines or residual pixels.
 - Confirm no status, SAN, Coach-feedback, history, or engine-stat text crosses
   the side-panel edge.
-- Confirm move, check, and win/loss/draw feedback remains clear without a
-  repeated pulse or redraw loop.
+- Confirm the match-start, positive Coach move, and result dots stop after their
+  short accent; move, check, and win/loss/draw feedback then remains static.
 - Check that the case remains comfortable to hold during repeated ten-second
   searches.
 - Run once on battery and confirm expected brightness and acceptable battery

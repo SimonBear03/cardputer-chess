@@ -31,7 +31,9 @@ constexpr std::array<LevelConfig, kLevelCount> kLevels = {{
     {"Easy", 80, 4, 280, 5},
     {"Casual", 180, 5, 170, 4},
     {"Club", 400, 7, 90, 3},
+    {"Skilled", 650, 8, 65, 3},
     {"Strong", 900, 9, 45, 2},
+    {"Advanced", 1400, 10, 30, 2},
     {"Expert", 2000, 12, 20, 2},
     {"Master", 4500, 16, 0, 1},
     {"Maximum", 10000, 24, 0, 1},
@@ -185,7 +187,9 @@ void Engine::storeHash(std::uint64_t key, int depth, int ply, int score,
     entry->move = encodeMove(move);
     entry->score = static_cast<std::int16_t>(clampScore(scoreToTable(score, ply)));
     entry->depth = static_cast<std::int8_t>(std::max(-1, std::min(127, depth)));
-    entry->boundAndAge = static_cast<std::uint8_t>((age_ << 2U) | (bound & 0x03U));
+    entry->boundAndAge = static_cast<std::uint8_t>(
+        (static_cast<unsigned>(age_) << 2U) |
+        (static_cast<unsigned>(bound) & 0x03U));
 }
 
 bool Engine::probeHash(std::uint64_t key, int depth, int ply, int alpha, int beta,

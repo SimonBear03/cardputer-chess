@@ -7,11 +7,11 @@ contributors who want to verify a change before flashing or publishing it.
 
 | Check | Result |
 | --- | --- |
-| Host rules, engine, and persistence tests | 286 assertions passed |
-| AddressSanitizer and UBSan | 286 assertions passed |
+| Host rules, engine, and persistence tests | 303 assertions passed |
+| AddressSanitizer and UBSan | 303 assertions passed |
 | Cardputer-Adv firmware build | Passed |
-| Static RAM | 178,156 / 327,680 bytes (54.4%) |
-| Flash image | 556,285 / 3,342,336 bytes (16.6%) |
+| Static RAM | 178,180 / 327,680 bytes (54.4%) |
+| Flash image | 558,097 / 3,342,336 bytes (16.7%) |
 | USB upload | Current build passed on `/dev/cu.usbmodem101` |
 
 These results support the checked-in code, but they do not replace looking at
@@ -25,7 +25,7 @@ Run:
 make test
 ```
 
-Current result: **286 assertions pass**. The suite includes the six standard
+Current result: **303 assertions pass**. The suite includes the six standard
 perft positions, with start position and endgame coverage extended to depth 4.
 It also covers:
 
@@ -35,7 +35,8 @@ It also covers:
 - en passant, including a pinned pawn and repetition-key semantics
 - all four promotions
 - checkmate, stalemate, fifty-move, threefold-repetition, and dead-position draws
-- level monotonicity, opening-book legality, mate-in-one search, and bounded stop
+- ten-level naming, strictly increasing time/depth budgets, tightening skill
+  error, opening-book legality, mate-in-one search, and bounded stop
 - expanded-book coverage through a Berlin Defense mainline
 - SAN notation, including capture, disambiguation, castling, promotion, check,
   and checkmate
@@ -51,7 +52,7 @@ Run the same suite with memory and undefined-behavior instrumentation:
 make test-sanitize
 ```
 
-Current result: **286 assertions pass under AddressSanitizer and UBSan**.
+Current result: **303 assertions pass under AddressSanitizer and UBSan**.
 LeakSanitizer is disabled because it requires ptrace support that is unavailable
 in some sandboxed runners.
 
@@ -66,8 +67,8 @@ platformio run
 The project pins Espressif32 platform 6.12.0 and the M5Cardputer Git tag 1.2.0.
 The current release build succeeds for the ESP32-S3FN8 target with:
 
-- Static RAM: 178,156 / 327,680 bytes (54.4%)
-- Flash image: 556,285 / 3,342,336 bytes (16.6%)
+- Static RAM: 178,180 / 327,680 bytes (54.4%)
+- Flash image: 558,097 / 3,342,336 bytes (16.7%)
 - Output: `.pio/build/cardputer-adv/firmware.bin`
 
 The 64 KiB transposition table is allocated once at runtime and is therefore
@@ -81,7 +82,9 @@ storage, including the notation copy used by the Coach overlay. This avoids
 overflowing the Arduino loop task while formatting a continuation line. All
 three themes share the same 14×14 two-color piece masks. Theme selection, board
 coordinates, dirty-region redraws, and the three-dot thinking indicator do not
-require a framebuffer or dynamic allocation.
+require a framebuffer or dynamic allocation. Home and New Match use localized
+action/slot redraws, while finite event accents also change only three two-pixel
+dots.
 
 Saved games use a fixed 1,048-byte scratch buffer plus a compact in-memory move
 record. Two alternating NVS slots, format versioning, and a CRC preserve the
@@ -98,7 +101,12 @@ The canonical perft FENs and expected leaf counts were cross-checked against an
 independent `python-chess` move generator while developing the suite. This
 caught two mistyped test positions before they entered the baseline.
 
-## QEMU application check
+## Previous QEMU application check
+
+The following evidence belongs to the earlier persistence/flicker baseline. It
+was intentionally **not rerun** for the Home/New Match upgrade because the web
+simulator is still under development. It must not be treated as current-shell
+visual evidence.
 
 The current firmware was merged into a private padded 8 MiB flash image with
 SHA-256 `7d0b9baf49419e40fe059a4402b0f5ab04925c092c5ee49e2e94b97f47e5ea06`.
@@ -129,14 +137,16 @@ The current firmware was uploaded successfully to a Cardputer-Adv detected as
 an ESP32-S3 revision v0.2 over its USB-Serial/JTAG interface at
 `/dev/cu.usbmodem101`. Bootloader, partition table, and application hashes all
 verified, and the upload completed with a hard reset. The flashed build includes
-saved-game recovery, the hard-search watchdog fix, dirty-region rendering, the
-localized thinking indicator, bounded panel text, and visible Coach suggestions.
+the Home/Continue flow, save-preserving New Match wheel, ten-level preference
+migration, dirty-region rendering, localized event and thinking indicators,
+bounded panel text, and visible Coach suggestions.
 
-Automatic resume after a hard power cycle and repeated ten-second Maximum
-searches remain required operator checks; a successful upload alone does not
-claim those behaviors on physical hardware.
+Continue after a hard power cycle and repeated ten-second Maximum searches
+remain required operator checks; a successful upload alone does not claim those
+behaviors on physical hardware.
 
 That smoke check does not replace the operator walkthrough. Exact LCD colors,
-small text, piece and square legibility, physical keys, repeated Coach use,
-sustained Maximum-level searches, battery draw, and temperature still need the
-checks in [hardware-test-checklist.md](hardware-test-checklist.md).
+small text, the new vertical-wheel hierarchy, piece and square legibility,
+physical keys, repeated Coach use, sustained Maximum-level searches, battery
+draw, and temperature still need the checks in
+[hardware-test-checklist.md](hardware-test-checklist.md).

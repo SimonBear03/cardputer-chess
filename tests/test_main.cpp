@@ -298,11 +298,20 @@ void testSanNotation() {
 void testLevelsAndEngine() {
     expectEqual(std::string(levelConfig(0).name), std::string("Beginner"),
                 "first level name");
-    expectEqual(std::string(levelConfig(7).name), std::string("Maximum"),
+    expectEqual(kLevelCount, 10, "difficulty uses a ten-step scale");
+    expectEqual(std::string(levelConfig(4).name), std::string("Skilled"),
+                "fifth level adds a distinct bridge");
+    expectEqual(std::string(levelConfig(6).name), std::string("Advanced"),
+                "seventh level adds a distinct bridge");
+    expectEqual(std::string(levelConfig(8).name), std::string("Master"),
+                "ninth level is master");
+    expectEqual(std::string(levelConfig(9).name), std::string("Maximum"),
                 "last level name");
     for (int level = 1; level < kLevelCount; ++level) {
-        expect(levelConfig(level).moveTimeMs >= levelConfig(level - 1).moveTimeMs,
+        expect(levelConfig(level).moveTimeMs > levelConfig(level - 1).moveTimeMs,
                "level time budgets are monotonic");
+        expect(levelConfig(level).maxDepth > levelConfig(level - 1).maxDepth,
+               "level depth ceilings are monotonic");
         expect(levelConfig(level).errorWindowCp <= levelConfig(level - 1).errorWindowCp,
                "level error windows tighten monotonically");
     }

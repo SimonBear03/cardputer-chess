@@ -15,6 +15,7 @@
 #include <array>
 #include <cctype>
 #include <cstdio>
+#include <cstring>
 
 using namespace cardputer_chess;
 
@@ -27,7 +28,10 @@ constexpr int kPanelX = 133;
 constexpr int kPanelWidth = 107;
 constexpr int kPanelTextChars = (kPanelWidth - 8) / 6;
 constexpr std::uint32_t kThinkingFrameMs = 300;
+constexpr std::uint32_t kEventFrameMs = 120;
+constexpr std::uint8_t kEventFrameCount = 6;
 constexpr std::uint32_t kSearchTaskStackBytes = 24576;
+constexpr std::uint8_t kLevelPreferenceVersion = 2;
 
 constexpr std::uint16_t rgb565(std::uint8_t red, std::uint8_t green,
                                std::uint8_t blue) {
@@ -35,7 +39,15 @@ constexpr std::uint16_t rgb565(std::uint8_t red, std::uint8_t green,
                                       ((green & 0xFCU) << 3U) | (blue >> 3U));
 }
 
-enum class Screen : std::uint8_t { Setup, Playing, Promotion, Coach, Pause, GameOver };
+enum class Screen : std::uint8_t {
+    Home,
+    Setup,
+    Playing,
+    Promotion,
+    Coach,
+    Pause,
+    GameOver,
+};
 enum class Action : std::uint8_t {
     None,
     Up,
@@ -52,6 +64,7 @@ enum class SideChoice : std::uint8_t { White, Black, Random };
 enum class ThemeMode : std::uint8_t { Classic, Neon, Royal };
 enum class SearchPurpose : std::uint8_t { Opponent, Coach };
 enum class SaveSlot : std::uint8_t { None, A, B };
+enum class UiAnimation : std::uint8_t { None, GameStart, PositiveMove, Result };
 
 struct ThemePalette {
     const char* name;
@@ -109,6 +122,7 @@ struct UiSnapshot {
     SideChoice sideChoice;
     CoachMode coachMode;
     int levelIndex;
+    int homeRow;
     int setupRow;
     int pauseRow;
     int cursorSquare;
@@ -125,12 +139,13 @@ Engine engine(64);
 std::array<GameRecord, kMaxGamePly> records{};
 std::uint16_t recordCount = 0;
 
-Screen screen = Screen::Setup;
+Screen screen = Screen::Home;
 SideChoice sideChoice = SideChoice::White;
 Color humanColor = Color::White;
 int levelIndex = 3;
 CoachMode coachMode = CoachMode::OnDemand;
 ThemeMode themeMode = ThemeMode::Classic;
+int homeRow = 0;
 int setupRow = 0;
 int pauseRow = 0;
 int cursorSquare = 12;
@@ -162,11 +177,16 @@ bool pendingOpponentSearch = false;
 bool openCoachWhenReady = false;
 bool engineLaunchFailed = false;
 bool gameSaveFailed = false;
+bool resumeAvailable = false;
 std::uint64_t gameSeed = 0;
 std::uint64_t searchRootKey = 0;
 std::uint32_t lastThinkingFrameMs = 0;
 std::uint8_t thinkingFrame = 0;
-Screen drawnScreen = Screen::Setup;
+UiAnimation uiAnimation = UiAnimation::None;
+std::uint32_t lastEventFrameMs = 0;
+std::uint8_t eventFrame = 0;
+std::uint8_t eventFrameCount = 0;
+Screen drawnScreen = Screen::Home;
 bool hasDrawnScreen = false;
 SavedGame savedGameScratch{};
 std::array<std::uint8_t, kSavedGameMaxBytes> savedGameBytes{};
@@ -266,6 +286,14 @@ void drawText(int x, int y, const char* value, std::uint16_t color = TFT_WHITE,
     M5Cardputer.Display.print(value);
 }
 
+int textWidth(const char* value, int size = 1) {
+    return static_cast<int>(std::strlen(value)) * 6 * size;
+}
+
+void drawCenteredText(int y, const char* value, std::uint16_t color, int size = 1) {
+    drawText(std::max(0, (240 - textWidth(value, size)) / 2), y, value, color, size);
+}
+
 void drawPanelText(int y, const char* value, std::uint16_t color) {
     char clipped[kPanelTextChars + 1]{};
     std::snprintf(clipped, sizeof(clipped), "%.*s", kPanelTextChars, value);
@@ -309,7 +337,7 @@ bool isCheckedKing(int square) {
            game.inCheck(game.sideToMove());
 }
 
-void drawPiece(int x, int y, Piece piece) {
+void drawPieceScaled(int x, int y, Piece piece, int scale) {
     if (piece == 0) return;
     const bool white = pieceColor(piece) == Color::White;
     const ThemePalette& colors = theme();
@@ -336,8 +364,10 @@ void drawPiece(int x, int y, Piece piece) {
                 }
             }
             if (runStart >= 0 && (!occupied || pixelColor != runColor)) {
-                M5Cardputer.Display.drawFastHLine(x + runStart + 1, y + row + 1,
-                                                  column - runStart, runColor);
+                M5Cardputer.Display.fillRect(x + (runStart + 1) * scale,
+                                             y + (row + 1) * scale,
+                                             (column - runStart) * scale, scale,
+                                             runColor);
                 runStart = -1;
             }
             if (occupied && runStart < 0) {
@@ -347,6 +377,8 @@ void drawPiece(int x, int y, Piece piece) {
         }
     }
 }
+
+void drawPiece(int x, int y, Piece piece) { drawPieceScaled(x, y, piece, 1); }
 
 void drawBoardSquare(int square) {
     const ThemePalette& colors = theme();
@@ -415,6 +447,40 @@ void drawThinkingDots(int x, int y, std::uint16_t backgroundColor) {
     }
 }
 
+void startUiAnimation(UiAnimation animation) {
+    uiAnimation = animation;
+    eventFrame = 0;
+    eventFrameCount = 0;
+    lastEventFrameMs = millis();
+}
+
+void drawEventDots(int x, int y, std::uint16_t backgroundColor,
+                   std::uint16_t activeColor, bool active) {
+    for (int index = 0; index < 3; ++index) {
+        const std::uint16_t color =
+            active && index == eventFrame ? activeColor : backgroundColor;
+        M5Cardputer.Display.fillCircle(x + index * 7, y, 2, color);
+    }
+}
+
+void drawUiAnimationIndicator(UiAnimation animation, bool active) {
+    const ThemePalette& colors = theme();
+    if (animation == UiAnimation::Result) {
+        if (screen == Screen::GameOver) {
+            drawEventDots(106, 88, colors.surface, colors.check, active);
+        }
+        return;
+    }
+    if ((animation == UiAnimation::GameStart ||
+         animation == UiAnimation::PositiveMove) &&
+        screen == Screen::Playing) {
+        const std::uint16_t color = animation == UiAnimation::PositiveMove
+                                        ? colors.legal
+                                        : colors.secondary;
+        drawEventDots(kPanelX + 81, 8, colors.background, color, active);
+    }
+}
+
 void drawPanelThinkingStatus() {
     const ThemePalette& colors = theme();
     const char* label = opponentSearchRunning() ? "ENGINE THINK" : "COACH THINK";
@@ -426,6 +492,10 @@ void drawPanel() {
     const ThemePalette& colors = theme();
     M5Cardputer.Display.fillRect(kPanelX, 0, kPanelWidth, 135, colors.background);
     drawText(kPanelX + 4, 3, "CARD CHESS", colors.accent, 1);
+    if (uiAnimation == UiAnimation::GameStart ||
+        uiAnimation == UiAnimation::PositiveMove) {
+        drawUiAnimationIndicator(uiAnimation, true);
+    }
     M5Cardputer.Display.drawFastHLine(kPanelX + 4, 13, kPanelWidth - 8, colors.surfaceStrong);
 
     char line[32];
@@ -517,47 +587,99 @@ void drawThemeIndicator(int x, int y) {
     }
 }
 
-void drawSetupRow(int row) {
+int homeActionCount() { return resumeAvailable ? 2 : 1; }
+
+const char* homeActionLabel(int row) {
+    if (!resumeAvailable) return "NEW GAME";
+    return row == 0 ? "CONTINUE" : "NEW GAME";
+}
+
+void drawHomeAction(int row) {
     const ThemePalette& colors = theme();
-    constexpr std::array<const char*, 4> labels = {
-        "PLAY AS", "LEVEL", "COACH", "THEME"};
-    const int y = 43 + row * 20;
-    M5Cardputer.Display.fillRect(8, y - 4, 224, 17, colors.background);
-    if (setupRow == row) {
-        M5Cardputer.Display.fillRoundRect(8, y - 4, 224, 17, 3, colors.surface);
-        drawText(12, y, ">", colors.secondary, 1);
+    const int firstY = resumeAvailable ? 89 : 100;
+    const int y = firstY + row * 20;
+    M5Cardputer.Display.fillRect(48, y, 144, 17, colors.background);
+    if (homeRow == row) {
+        M5Cardputer.Display.fillRoundRect(48, y, 144, 17, 4, colors.surfaceStrong);
+        M5Cardputer.Display.drawRoundRect(48, y, 144, 17, 4, colors.accent);
     }
-    drawText(24, y, labels[static_cast<std::size_t>(row)], colors.text, 1);
+    drawCenteredText(y + 5, homeActionLabel(row),
+                     homeRow == row ? colors.text : colors.muted, 1);
+}
+
+void drawHome() {
+    const ThemePalette& colors = theme();
+    M5Cardputer.Display.fillRect(0, 0, 240, 33, colors.surface);
+    M5Cardputer.Display.fillRect(0, 0, 4, 33, colors.accent);
+    drawCenteredText(4, "CARDPUTER", colors.accent, 1);
+    drawCenteredText(14, "CHESS", colors.text, 2);
+    M5Cardputer.Display.drawFastHLine(4, 32, 236, colors.accent);
+
+    drawPieceScaled(97, 34, makePiece(Color::White, PieceType::Knight), 3);
+    drawCenteredText(80, "OFFLINE POCKET GAME", colors.muted, 1);
+    for (int row = 0; row < homeActionCount(); ++row) drawHomeAction(row);
+    drawCenteredText(126, "ARROWS SELECT   ENTER OPEN", colors.secondary, 1);
+}
+
+constexpr std::array<const char*, 4> kSetupLabels = {
+    "PLAY AS", "LEVEL", "COACH", "THEME"};
+
+void formatSetupValue(int row, char* value, std::size_t valueSize) {
     if (row == 0) {
-        drawText(150, y, sideChoiceName(sideChoice), colors.accent, 1);
+        std::snprintf(value, valueSize, "%s", sideChoiceName(sideChoice));
     } else if (row == 1) {
-        char value[32];
-        std::snprintf(value, sizeof(value), "%d %s", levelIndex + 1,
+        std::snprintf(value, valueSize, "%d %s", levelIndex + 1,
                       levelConfig(levelIndex).name);
-        drawText(150, y, value, colors.accent, 1);
     } else if (row == 2) {
-        drawText(150, y, coachModeName(coachMode), colors.accent, 1);
-    } else if (row == 3) {
-        drawText(150, y, colors.name, colors.accent, 1);
-        drawThemeIndicator(198, y - 1);
+        std::snprintf(value, valueSize, "%s", coachModeName(coachMode));
+    } else {
+        std::snprintf(value, valueSize, "%s", theme().name);
     }
+}
+
+void drawSetupNeighbor(int row, int y) {
+    if (row < 0 || row >= static_cast<int>(kSetupLabels.size())) return;
+    char value[24];
+    formatSetupValue(row, value, sizeof(value));
+    char line[40];
+    std::snprintf(line, sizeof(line), "%s  %s",
+                  kSetupLabels[static_cast<std::size_t>(row)], value);
+    drawCenteredText(y, line, theme().muted, 1);
+}
+
+void drawSetupWheel() {
+    const ThemePalette& colors = theme();
+    M5Cardputer.Display.fillRect(10, 37, 220, 12, colors.background);
+    M5Cardputer.Display.fillRect(10, 51, 220, 46, colors.background);
+    M5Cardputer.Display.fillRect(10, 102, 220, 12, colors.background);
+
+    drawSetupNeighbor(setupRow - 1, 39);
+
+    M5Cardputer.Display.fillRoundRect(10, 51, 220, 46, 5, colors.surface);
+    M5Cardputer.Display.drawRoundRect(10, 51, 220, 46, 5, colors.accent);
+    M5Cardputer.Display.fillRoundRect(10, 51, 4, 46, 2, colors.accent);
+    drawCenteredText(57, kSetupLabels[static_cast<std::size_t>(setupRow)],
+                     colors.accent, 1);
+    char value[24];
+    formatSetupValue(setupRow, value, sizeof(value));
+    char selected[32];
+    std::snprintf(selected, sizeof(selected), "< %s >", value);
+    drawCenteredText(69, selected, colors.text, 2);
+    if (setupRow == 3) drawThemeIndicator(104, 87);
+
+    drawSetupNeighbor(setupRow + 1, 104);
 }
 
 void drawSetup() {
     const ThemePalette& colors = theme();
     M5Cardputer.Display.fillRect(0, 0, 240, 33, colors.surface);
     M5Cardputer.Display.fillRect(0, 0, 4, 33, colors.accent);
-    drawText(12, 4, "CARDPUTER", colors.accent, 1);
-    drawText(12, 14, "CHESS", colors.text, 2);
-    drawText(96, 18, "OFFLINE POCKET GAME", colors.muted, 1);
+    drawText(12, 7, "NEW MATCH", colors.text, 2);
     drawPiece(214, 7, makePiece(Color::White, PieceType::Knight));
     M5Cardputer.Display.drawFastHLine(4, 32, 236, colors.accent);
-
-    for (int row = 0; row < 4; ++row) {
-        drawSetupRow(row);
-    }
-    drawText(12, 126, "ARROWS CHANGE", colors.muted, 1);
-    drawText(162, 126, "ENTER START", colors.secondary, 1);
+    drawSetupWheel();
+    drawText(10, 126, "ESC HOME", colors.muted, 1);
+    drawText(166, 126, "ENTER PLAY", colors.secondary, 1);
 }
 
 void drawPromotionChoice(int index) {
@@ -695,6 +817,9 @@ void drawGameOver() {
     M5Cardputer.Display.drawRoundRect(23, 40, 194, 56, 5, colors.accent);
     drawText(38, 49, outcomeName(outcome), colors.check, 2);
     drawText(38, 79, "ENTER NEW GAME   U UNDO", colors.text, 1);
+    if (uiAnimation == UiAnimation::Result) {
+        drawUiAnimationIndicator(uiAnimation, true);
+    }
 }
 
 UiSnapshot captureUiSnapshot() {
@@ -703,6 +828,7 @@ UiSnapshot captureUiSnapshot() {
                       sideChoice,
                       coachMode,
                       levelIndex,
+                      homeRow,
                       setupRow,
                       pauseRow,
                       cursorSquare,
@@ -741,6 +867,12 @@ void redrawThinkingIndicator() {
     M5Cardputer.Display.endWrite();
 }
 
+void redrawUiAnimationIndicator(UiAnimation animation, bool active) {
+    M5Cardputer.Display.startWrite();
+    drawUiAnimationIndicator(animation, active);
+    M5Cardputer.Display.endWrite();
+}
+
 void redrawAfterAction(const UiSnapshot& before) {
     if (!hasDrawnScreen || before.screen != screen ||
         before.themeMode != themeMode) {
@@ -751,17 +883,20 @@ void redrawAfterAction(const UiSnapshot& before) {
     M5Cardputer.Display.startWrite();
     bool changed = false;
     switch (screen) {
+        case Screen::Home:
+            if (before.homeRow != homeRow) {
+                drawHomeAction(before.homeRow);
+                drawHomeAction(homeRow);
+                changed = true;
+            }
+            break;
         case Screen::Setup: {
             const bool rowChanged = before.setupRow != setupRow;
             const bool valueChanged = before.sideChoice != sideChoice ||
                                       before.levelIndex != levelIndex ||
                                       before.coachMode != coachMode;
-            if (rowChanged) {
-                drawSetupRow(before.setupRow);
-                drawSetupRow(setupRow);
-                changed = true;
-            } else if (valueChanged) {
-                drawSetupRow(setupRow);
+            if (rowChanged || valueChanged) {
+                drawSetupWheel();
                 changed = true;
             }
             break;
@@ -835,6 +970,7 @@ void redraw() {
         M5Cardputer.Display.fillScreen(theme().background);
     }
     switch (screen) {
+        case Screen::Home: drawHome(); break;
         case Screen::Setup: drawSetup(); break;
         case Screen::Playing: drawGame(); break;
         case Screen::Promotion: drawPromotion(); break;
@@ -873,6 +1009,7 @@ Action readAction() {
 
 void savePreferences() {
     preferences.putUChar("level", static_cast<std::uint8_t>(levelIndex));
+    preferences.putUChar("lvl_ver", kLevelPreferenceVersion);
     preferences.putUChar("side", static_cast<std::uint8_t>(sideChoice));
     preferences.putUChar("coach", static_cast<std::uint8_t>(coachMode));
     preferences.putUChar("theme", static_cast<std::uint8_t>(themeMode));
@@ -880,13 +1017,25 @@ void savePreferences() {
 
 void loadPreferences() {
     preferences.begin("cpchess", false);
-    levelIndex = std::min<int>(kLevelCount - 1, preferences.getUChar("level", 3));
+    const std::uint8_t storedLevel = preferences.getUChar("level", 3);
+    const std::uint8_t storedLevelVersion = preferences.getUChar("lvl_ver", 1);
+    const bool migrateLevelPreference =
+        storedLevelVersion < kLevelPreferenceVersion;
+    if (migrateLevelPreference) {
+        constexpr std::array<std::uint8_t, 8> legacyLevelMap = {
+            0, 1, 2, 3, 5, 7, 8, 9};
+        levelIndex = legacyLevelMap[std::min<std::size_t>(storedLevel,
+                                                          legacyLevelMap.size() - 1U)];
+    } else {
+        levelIndex = std::min<int>(kLevelCount - 1, storedLevel);
+    }
     sideChoice = static_cast<SideChoice>(
         std::min<int>(2, preferences.getUChar("side", 0)));
     coachMode = static_cast<CoachMode>(
         std::min<int>(2, preferences.getUChar("coach", 1)));
     themeMode = static_cast<ThemeMode>(
         std::min<int>(2, preferences.getUChar("theme", 0)));
+    if (migrateLevelPreference) savePreferences();
 }
 
 const char* saveSlotKey(SaveSlot slot) {
@@ -924,6 +1073,7 @@ void clearSavedGame() {
     activeSaveSlot = SaveSlot::None;
     activeSaveGeneration = 0;
     gameSaveFailed = false;
+    resumeAvailable = false;
 }
 
 bool saveCurrentGame() {
@@ -948,6 +1098,7 @@ bool saveCurrentGame() {
     activeSaveSlot = destination;
     activeSaveGeneration = savedGameScratch.generation;
     gameSaveFailed = false;
+    resumeAvailable = true;
     return true;
 }
 
@@ -1085,9 +1236,17 @@ bool restoreSavedGame() {
     refreshLastMove();
     cursorSquare = hasLastMove ? lastMove.to
                                : (humanColor == Color::White ? 12 : 52);
-    screen = outcome == GameState::Ongoing ? Screen::Playing : Screen::GameOver;
-    startTurnSearch();
+    resumeAvailable = true;
+    homeRow = 0;
+    screen = Screen::Home;
     return true;
+}
+
+void resumeGame() {
+    if (!resumeAvailable) return;
+    screen = outcome == GameState::Ongoing ? Screen::Playing : Screen::GameOver;
+    if (outcome != GameState::Ongoing) startUiAnimation(UiAnimation::Result);
+    startTurnSearch();
 }
 
 void performUndo() {
@@ -1124,6 +1283,11 @@ void applyMove(const Move& move) {
         coachFeedback = coachAnalysisCurrent()
                             ? classifyCoachMove(coachAnalysis, move)
                             : CoachFeedback{};
+        if (coachFeedback.quality == MoveQuality::Best ||
+            coachFeedback.quality == MoveQuality::Excellent ||
+            coachFeedback.quality == MoveQuality::Good) {
+            startUiAnimation(UiAnimation::PositiveMove);
+        }
         if (coachSearchRunning()) {
             engine.requestStop();
             discardSearch = true;
@@ -1147,6 +1311,7 @@ void applyMove(const Move& move) {
     saveCurrentGame();
     if (outcome != GameState::Ongoing) {
         screen = Screen::GameOver;
+        startUiAnimation(UiAnimation::Result);
     } else {
         screen = Screen::Playing;
         startTurnSearch();
@@ -1179,6 +1344,7 @@ void newGame() {
     }
     cursorSquare = humanColor == Color::White ? 12 : 52;
     screen = Screen::Playing;
+    startUiAnimation(UiAnimation::GameStart);
     savePreferences();
     saveCurrentGame();
     startTurnSearch();
@@ -1245,9 +1411,27 @@ void confirmPromotion() {
     }
 }
 
+void handleHome(Action action) {
+    const int lastRow = homeActionCount() - 1;
+    if (action == Action::Up) homeRow = std::max(0, homeRow - 1);
+    if (action == Action::Down) homeRow = std::min(lastRow, homeRow + 1);
+    if (action != Action::Confirm) return;
+    if (resumeAvailable && homeRow == 0) {
+        resumeGame();
+        return;
+    }
+    setupRow = 0;
+    screen = Screen::Setup;
+}
+
 void handleSetup(Action action) {
     if (action == Action::Up) setupRow = std::max(0, setupRow - 1);
     if (action == Action::Down) setupRow = std::min(3, setupRow + 1);
+    if (action == Action::Cancel) {
+        homeRow = 0;
+        screen = Screen::Home;
+        return;
+    }
     if (action == Action::Confirm) {
         newGame();
         return;
@@ -1376,14 +1560,14 @@ void handlePause(Action action) {
     } else if (action == Action::Confirm && pauseRow == 4 && !searchRunning) {
         performUndo();
     } else if (action == Action::Confirm && pauseRow == 5 && !searchRunning) {
-        clearSavedGame();
+        setupRow = 0;
         screen = Screen::Setup;
     }
 }
 
 void handleGameOver(Action action) {
     if (action == Action::Confirm) {
-        clearSavedGame();
+        setupRow = 0;
         screen = Screen::Setup;
     } else if (action == Action::Undo) {
         performUndo();
@@ -1459,6 +1643,7 @@ void loop() {
     if (action != Action::None) {
         const UiSnapshot before = captureUiSnapshot();
         switch (screen) {
+            case Screen::Home: handleHome(action); break;
             case Screen::Setup: handleSetup(action); break;
             case Screen::Playing: handlePlaying(action); break;
             case Screen::Promotion: handlePromotion(action); break;
@@ -1475,6 +1660,22 @@ void loop() {
             lastThinkingFrameMs = now;
             thinkingFrame = static_cast<std::uint8_t>((thinkingFrame + 1U) % 3U);
             redrawThinkingIndicator();
+        }
+    }
+
+    if (uiAnimation != UiAnimation::None) {
+        const std::uint32_t now = millis();
+        if (now - lastEventFrameMs >= kEventFrameMs) {
+            lastEventFrameMs = now;
+            const UiAnimation animation = uiAnimation;
+            ++eventFrameCount;
+            if (eventFrameCount >= kEventFrameCount) {
+                uiAnimation = UiAnimation::None;
+                redrawUiAnimationIndicator(animation, false);
+            } else {
+                eventFrame = static_cast<std::uint8_t>((eventFrame + 1U) % 3U);
+                redrawUiAnimationIndicator(animation, true);
+            }
         }
     }
 

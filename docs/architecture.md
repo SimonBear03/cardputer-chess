@@ -71,9 +71,10 @@ The 36 vetted opening lines compile into 163 unique position/move entries.
 
 ### Cardputer application
 
-`src/main.cpp` owns the setup menu, persisted level/color/Coach/theme preferences,
-board cursor and move selection, promotion chooser, direct LCD rendering, game
-history, Coach overlay, and the background engine task. Three shared palettes
+`src/main.cpp` owns the home screen, New Match settings wheel, persisted
+level/color/Coach/theme preferences, board cursor and move selection, promotion
+chooser, direct LCD rendering, game history, Coach overlay, and the background
+engine task. Three shared palettes
 provide the Classic, Neon, and Royal themes without duplicating layouts or
 allocating framebuffers. Target-sized generated Staunton artwork is reduced to
 fixed 14×14 body/detail masks in `piece_glyphs.hpp`, so all six piece types have
@@ -88,30 +89,35 @@ The application saves the current move history, human side, random seed, and a
 monotonic generation to two alternating ESP32 NVS slots. Each completed move or
 undo writes the inactive slot, so an interrupted write leaves the previous slot
 available. On boot the newest versioned record with a valid CRC is replayed and
-shown immediately. Engine and Coach searches, open overlays, and selections are
-intentionally transient. Returning to setup through New Game clears both slots.
+offered as **Continue** on the home screen. Engine and Coach searches, open
+overlays, and selections are intentionally transient. Entering New Match does
+not destroy the previous save; starting the replacement match writes a newer
+generation into the alternating-slot journal.
 
 `startWrite()` keeps a display-bus transaction open but does not make a group of
 LCD commands appear atomically. The UI therefore never runs a timed full-screen
 repaint loop. Cursor movement redraws two 15-pixel squares, selection redraws
-only the changed selection and legal-destination squares, and setup, pause,
-promotion, and Coach navigation redraw only the affected rows or detail region.
+only the changed selection and legal-destination squares, Home redraws only the
+two affected actions, and the New Match wheel redraws only its three visible
+slots. Pause, promotion, and Coach navigation redraw only the affected rows or
+detail region.
 A completed Coach search updates just the side panel and exposes its best move
 as `NEXT <SAN>` when the board did not change. Variable panel copy is capped at
 the inner panel's 16-character width.
 
-The sole timed animation communicates active Engine or Coach work. Every 300 ms
-it recolors only three two-pixel status dots in the side panel, or in the open
-Coach overlay. It does not clear a text row, redraw the board, or allocate a
-sprite.
+The repeating timed animation communicates active Engine or Coach work. Every
+300 ms it recolors only three two-pixel status dots in the side panel, or in the
+open Coach overlay. Short match-start, positive-Coach-move, and result accents
+use the same localized three-dot treatment for six 120 ms frames. None clears a
+text row, redraws the board, or allocates a sprite.
 
 Transitions among board-backed screens repaint over the current frame without a
 blanking clear. Theme changes and structurally different screens still repaint
 the complete active screen once so no pixels from the previous layout remain.
-Move, check, and result feedback stays visible as static state rather than a
-repeated animation. This avoids continuous tearing while preserving the 64 KiB
-engine hash and 24 KiB search stack; a 240×135 16-bit framebuffer would consume
-another 64.8 KiB on a target with no PSRAM.
+Move, check, and result feedback stays visible as static state after any short
+event accent finishes. This avoids continuous tearing while preserving the
+64 KiB engine hash and 24 KiB search stack; a 240×135 16-bit framebuffer would
+consume another 64.8 KiB on a target with no PSRAM.
 
 The board uses 15×15-pixel squares, leaving native-font gutters for file and
 rank labels. Coordinate labels and piece placement both follow the human-side
@@ -160,11 +166,14 @@ placing another four-kilobyte `Position` on the UI task's stack.
 
 ## Strength levels
 
-All eight levels use the same engine. Levels change maximum depth, time budget,
-and controlled root-move error. Maximum always chooses the best completed root
-move and receives the largest time budget. Lower levels sometimes choose a
+All ten numbered levels use the same engine. Levels change maximum depth, time
+budget, and controlled root-move error. The scale runs from **1 Beginner** to
+**9 Master** and **10 Maximum**; Skilled and Advanced provide real intermediate
+budgets rather than cosmetic labels. Maximum always chooses the best completed
+root move and receives the largest time budget. Lower levels sometimes choose a
 plausible inferior candidate so they remain meaningfully beatable rather than
-merely fast.
+merely fast. A versioned preference migration preserves the effective strength
+of older eight-level Master and Maximum selections.
 
 Timed search compares unsigned elapsed milliseconds instead of an absolute
 deadline, so the ESP32's 32-bit `millis()` rollover cannot create a runaway

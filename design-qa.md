@@ -1,5 +1,11 @@
 # Design QA
 
+> **Current scope:** The board, pieces, and three palettes below remain the
+> accepted visual baseline. The listed setup screenshots document the previous
+> four-row screen and are historical, not evidence for the new Home and vertical
+> New Match wheel. The new shell deliberately awaits physical-LCD review; the
+> unfinished web simulator was not used for this upgrade.
+
 ## Evidence
 
 - Source visual truth, Classic:
@@ -65,9 +71,10 @@ No actionable P0, P1, or P2 mismatch remains.
   head, the bishop carries a mitre cut, the rook has battlements, the queen has a
   crown, and the king has a solid same-color cross. No piece is represented by a
   letter, emoji, text symbol, placeholder, or runtime vector drawing.
-- Copy and content: setup, game, Coach, and pause labels use concise
-  device-appropriate language. `ENTER START` accurately describes the direct
-  setup action, and a framed three-swatch selector exposes all persistent themes.
+- Copy and content: Home, New Match, game, Coach, and pause labels use concise
+  device-appropriate language. The active New Match value is framed by `< >`,
+  while smaller neighboring settings communicate Up/Down navigation without a
+  separate instruction block.
 
 The source concepts contain more sculpted detail and denser ornament than can
 remain legible on a 240×135 panel. The reduced silhouettes and compact panel are
@@ -158,9 +165,11 @@ assets, and visible copy are coherent at the target viewport.
 
 - Three-way theme cycling is wired in setup and pause and persists through
   Preferences.
-- Enter/Space starts from every setup row; Up/Down selects and Left/Right changes
-  settings.
-- Setup, playing, promotion, Coach, pause, and game-over screens use the active
+- Home offers Continue and New Game without exposing match settings. Enter/Space
+  starts from every New Match setting; Up/Down moves through the vertical wheel,
+  Left/Right changes the centered value, and Back returns Home without erasing a
+  saved match.
+- Home, New Match, playing, promotion, Coach, pause, and game-over screens use the active
   palette and the shared generated piece assets.
 - Board navigation redraws only dirty 15-pixel squares, and menu navigation
   redraws only dirty rows; there is no timed full-screen repaint loop.
@@ -168,10 +177,12 @@ assets, and visible copy are coherent at the target viewport.
   the three small status dots per frame. Completed analysis exposes the best
   move in a bounded `NEXT <SAN>` panel line, and all variable panel copy is
   capped at 16 characters.
+- Match-start, positive Coach feedback, and game-result accents run for only six
+  localized 120 ms frames and never repaint the board.
 - Theme selection uses one complete redraw rather than an overlay animation,
   preventing residual scanline fragments in partially repainted menu gaps.
-- The primary interaction paths compile in the final firmware build; no build
-  or simulator errors were present.
+- The primary interaction paths compile in the firmware build. The unfinished
+  simulator was intentionally excluded from this upgrade's evidence.
 - Browser and browser-console checks are not applicable to this embedded LCD
   application.
 - Physical key behavior, exact LCD appearance, and sustained Coach use are
@@ -184,4 +195,4 @@ assets, and visible copy are coherent at the target viewport.
   contrast, and dirty-region stability on the physical LCD under both
   bright-room and low-light conditions.
 
-final result: passed
+final result: board and piece baseline passed; new shell pending physical review
