@@ -11,9 +11,9 @@
   `/Users/simon/.codex/generated_images/019f7830-7f59-7980-aa36-07eef070f9cc/exec-49d98012-0280-4553-8535-97bb248074d7.png`
 - Target viewport: 240×135 pixels, matching the Cardputer-Adv LCD
 - Reference states: Home with Continue selected; New Match focused on Level 4
-- Implemented states: Home with compact cursor/underline actions; New Match
-  with a four-segment setting rail, smaller neighboring settings, centered
-  active value, and no enclosing selection box
+- Implemented states: Home with lower, evenly spaced actions and an arrow-only
+  selection cursor; New Match with a four-segment setting rail, smaller
+  neighboring settings, centered active value, and no enclosing selection box
 - Implementation screenshot: unavailable by design for this pass. Simon asked
   not to use the unfinished simulator, and the physical LCD cannot be captured
   directly by the firmware toolchain.

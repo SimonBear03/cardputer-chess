@@ -603,18 +603,13 @@ const char* homeActionLabel(int row) {
 
 void drawHomeAction(int row) {
     const ThemePalette& colors = theme();
-    const int firstY = resumeAvailable ? 72 : 83;
+    const int firstY = resumeAvailable ? 78 : 89;
     const int y = firstY + row * 18;
     const char* label = homeActionLabel(row);
     const int labelX = (240 - textWidth(label)) / 2;
     M5Cardputer.Display.fillRect(70, y, 100, 17, colors.background);
     if (homeRow == row) {
         drawText(labelX - 18, y + 2, ">", colors.accent, 1);
-        M5Cardputer.Display.fillRect(labelX, y + 13, textWidth(label) / 2, 2,
-                                     colors.accent);
-        M5Cardputer.Display.fillRect(labelX + textWidth(label) / 2, y + 13,
-                                     textWidth(label) - textWidth(label) / 2, 2,
-                                     colors.secondary);
     }
     drawCenteredText(y + 2, label,
                      homeRow == row ? colors.secondary : colors.muted, 1);

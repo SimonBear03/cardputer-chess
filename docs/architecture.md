@@ -98,7 +98,7 @@ generation into the alternating-slot journal.
 LCD commands appear atomically. The UI therefore never runs a timed full-screen
 repaint loop. Cursor movement redraws two 15-pixel squares, selection redraws
 only the changed selection and legal-destination squares, Home redraws only the
-two affected cursor-and-underline actions, and the New Match wheel redraws its
+two affected cursor-and-label actions, and the New Match wheel redraws its
 three visible setting groups plus the four-segment position rail as one bounded
 content region. Pause, promotion, and Coach navigation redraw only the affected
 rows or detail region.
