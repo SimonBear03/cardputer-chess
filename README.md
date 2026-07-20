@@ -10,11 +10,11 @@ Cardputer-Adv. You play against the built-in engine using the keyboard and the
 2. Choose **New Game** on the home screen. If a saved match exists,
    **Continue** is selected by default instead.
 3. On the New Match screen, use Up/Down to move through Play As, Level, Coach,
-   and Theme. The four-segment rail on the left marks your position. The current
-   setting is large; its neighboring settings are shown above and below in
-   smaller, dimmed text.
-4. Use Left/Right to change the value inside the visible `< >` arrows, then
-   press Enter or Space from any setting to play.
+   and Theme. All four settings and their current values remain visible. The
+   selected row is marked with an arrow, and the options strip shows the
+   previous, current, and next choices.
+4. Use Left/Right to choose from the visible options, then press Enter or Space
+   from any setting to play.
 5. Move the board cursor with the arrow keys. Press Enter or Space once to pick
    up a piece and again to place it on a highlighted legal square.
 

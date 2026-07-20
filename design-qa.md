@@ -12,8 +12,8 @@
 - Target viewport: 240×135 pixels, matching the Cardputer-Adv LCD
 - Reference states: Home with Continue selected; New Match focused on Level 4
 - Implemented states: Home with lower, evenly spaced actions and an arrow-only
-  selection cursor; New Match with a four-segment setting rail, smaller
-  neighboring settings, centered active value, and no enclosing selection box
+  selection cursor; New Match with all four setting/value rows visible and a
+  compact previous/current/next options strip for the selected row
 - Implementation screenshot: unavailable by design for this pass. Simon asked
   not to use the unfinished simulator, and the physical LCD cannot be captured
   directly by the firmware toolchain.
@@ -185,9 +185,9 @@ assets, and visible copy are coherent at the target viewport.
 - Three-way theme cycling is wired in setup and pause and persists through
   Preferences.
 - Home offers Continue and New Game without exposing match settings. Enter/Space
-  starts from every New Match setting; Up/Down moves through the vertical wheel,
-  Left/Right changes the centered value, and Back returns Home without erasing a
-  saved match.
+  starts from every New Match setting; Up/Down moves through the four-row list,
+  Left/Right changes the centered choice in the options strip, and Back returns
+  Home without erasing a saved match.
 - Home, New Match, playing, promotion, Coach, pause, and game-over screens use the active
   palette and the shared generated piece assets.
 - Board navigation redraws only dirty 15-pixel squares, and menu navigation

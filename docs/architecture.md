@@ -71,7 +71,7 @@ The 36 vetted opening lines compile into 163 unique position/move entries.
 
 ### Cardputer application
 
-`src/main.cpp` owns the home screen, New Match settings wheel, persisted
+`src/main.cpp` owns the home screen, New Match settings list, persisted
 level/color/Coach/theme preferences, board cursor and move selection, promotion
 chooser, direct LCD rendering, game history, Coach overlay, and the background
 engine task. Three shared palettes
@@ -98,10 +98,9 @@ generation into the alternating-slot journal.
 LCD commands appear atomically. The UI therefore never runs a timed full-screen
 repaint loop. Cursor movement redraws two 15-pixel squares, selection redraws
 only the changed selection and legal-destination squares, Home redraws only the
-two affected cursor-and-label actions, and the New Match wheel redraws its
-three visible setting groups plus the four-segment position rail as one bounded
-content region. Pause, promotion, and Coach navigation redraw only the affected
-rows or detail region.
+two affected cursor-and-label actions, and New Match redraws its four-row list
+and compact options strip as one bounded content region. Pause, promotion, and
+Coach navigation redraw only the affected rows or detail region.
 A completed Coach search updates just the side panel and exposes its best move
 as `NEXT <SAN>` when the board did not change. Variable panel copy is capped at
 the inner panel's 16-character width.

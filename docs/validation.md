@@ -83,8 +83,8 @@ overflowing the Arduino loop task while formatting a continuation line. All
 three themes share the same 14×14 two-color piece masks. Theme selection, board
 coordinates, dirty-region redraws, and the three-dot thinking indicator do not
 require a framebuffer or dynamic allocation. Home and New Match use localized
-action/slot redraws, while finite event accents also change only three two-pixel
-dots.
+action/content redraws, while finite event accents also change only three
+two-pixel dots.
 
 Saved games use a fixed 1,048-byte scratch buffer plus a compact in-memory move
 record. Two alternating NVS slots, format versioning, and a CRC preserve the
@@ -137,16 +137,16 @@ The current firmware was uploaded successfully to a Cardputer-Adv detected as
 an ESP32-S3 revision v0.2 over its USB-Serial/JTAG interface at
 `/dev/cu.usbmodem101`. Bootloader, partition table, and application hashes all
 verified, and the upload completed with a hard reset. The flashed build includes
-the Home/Continue flow, save-preserving New Match wheel, ten-level preference
-migration, dirty-region rendering, localized event and thinking indicators,
-bounded panel text, and visible Coach suggestions.
+the Home/Continue flow, save-preserving New Match settings list, ten-level
+preference migration, dirty-region rendering, localized event and thinking
+indicators, bounded panel text, and visible Coach suggestions.
 
 Continue after a hard power cycle and repeated ten-second Maximum searches
 remain required operator checks; a successful upload alone does not claim those
 behaviors on physical hardware.
 
 That smoke check does not replace the operator walkthrough. Exact LCD colors,
-small text, the new vertical-wheel hierarchy, piece and square legibility,
-physical keys, repeated Coach use, sustained Maximum-level searches, battery
-draw, and temperature still need the checks in
+small text, the settings-list hierarchy and options strip, piece and square
+legibility, physical keys, repeated Coach use, sustained Maximum-level searches,
+battery draw, and temperature still need the checks in
 [hardware-test-checklist.md](hardware-test-checklist.md).

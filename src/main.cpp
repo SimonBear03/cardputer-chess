@@ -294,13 +294,6 @@ void drawCenteredText(int y, const char* value, std::uint16_t color, int size = 
     drawText(std::max(0, (240 - textWidth(value, size)) / 2), y, value, color, size);
 }
 
-void drawCenteredTextInRegion(int left, int right, int y, const char* value,
-                              std::uint16_t color, int size = 1) {
-    const int width = textWidth(value, size);
-    drawText(std::max(left, left + (right - left - width) / 2), y, value, color,
-             size);
-}
-
 void drawPanelText(int y, const char* value, std::uint16_t color) {
     char clipped[kPanelTextChars + 1]{};
     std::snprintf(clipped, sizeof(clipped), "%.*s", kPanelTextChars, value);
@@ -629,16 +622,32 @@ void drawHome() {
 constexpr std::array<const char*, 4> kSetupLabels = {
     "PLAY AS", "LEVEL", "COACH", "THEME"};
 
-void formatSetupValue(int row, char* value, std::size_t valueSize) {
+int setupChoiceCount(int row) {
+    return row == 1 ? kLevelCount : 3;
+}
+
+int setupChoiceIndex(int row) {
+    if (row == 0) return static_cast<int>(sideChoice);
+    if (row == 1) return levelIndex;
+    if (row == 2) return static_cast<int>(coachMode);
+    return static_cast<int>(themeMode);
+}
+
+void formatSetupChoice(int row, int choice, char* value, std::size_t valueSize) {
+    const int count = setupChoiceCount(row);
+    choice = (choice % count + count) % count;
     if (row == 0) {
-        std::snprintf(value, valueSize, "%s", sideChoiceName(sideChoice));
+        std::snprintf(value, valueSize, "%s",
+                      sideChoiceName(static_cast<SideChoice>(choice)));
     } else if (row == 1) {
-        std::snprintf(value, valueSize, "%d %s", levelIndex + 1,
-                      levelConfig(levelIndex).name);
+        std::snprintf(value, valueSize, "%d %s", choice + 1,
+                      levelConfig(choice).name);
     } else if (row == 2) {
-        std::snprintf(value, valueSize, "%s", coachModeName(coachMode));
+        std::snprintf(value, valueSize, "%s",
+                      coachModeName(static_cast<CoachMode>(choice)));
     } else {
-        std::snprintf(value, valueSize, "%s", theme().name);
+        std::snprintf(value, valueSize, "%s",
+                      kThemes[static_cast<std::size_t>(choice)].name);
     }
     for (std::size_t index = 0; value[index] != '\0'; ++index) {
         value[index] = static_cast<char>(
@@ -646,56 +655,62 @@ void formatSetupValue(int row, char* value, std::size_t valueSize) {
     }
 }
 
-void drawSetupNeighbor(int row, int labelY, int valueY) {
-    if (row < 0 || row >= static_cast<int>(kSetupLabels.size())) return;
+void formatSetupValue(int row, char* value, std::size_t valueSize) {
+    formatSetupChoice(row, setupChoiceIndex(row), value, valueSize);
+}
+
+void drawSetupRow(int row) {
+    const ThemePalette& colors = theme();
+    const int y = 32 + row * 15;
+    const bool selected = row == setupRow;
     char value[24];
     formatSetupValue(row, value, sizeof(value));
-    drawCenteredTextInRegion(38, 238, labelY,
-                             kSetupLabels[static_cast<std::size_t>(row)],
-                             theme().muted, 1);
-    drawCenteredTextInRegion(38, 238, valueY, value, theme().muted, 1);
-}
-
-void drawSetupPositionRail() {
-    const ThemePalette& colors = theme();
-    for (int row = 0; row < static_cast<int>(kSetupLabels.size()); ++row) {
-        const std::uint16_t color = row == setupRow ? colors.accent
-                                                    : colors.surfaceStrong;
-        M5Cardputer.Display.fillRect(12, 35 + row * 17, 4, 10, color);
+    if (selected) {
+        M5Cardputer.Display.fillRect(8, y - 1, 3, 10, colors.accent);
+        drawText(14, y, ">", colors.accent, 1);
     }
-    M5Cardputer.Display.fillRect(28, 56, 2, 32, colors.accent);
-    drawText(34, 68, ">", colors.accent, 1);
+    drawText(26, y, kSetupLabels[static_cast<std::size_t>(row)],
+             selected ? colors.secondary : colors.muted, 1);
+    drawText(232 - textWidth(value), y, value, colors.text, 1);
 }
 
-void drawSetupActiveValue(const char* value) {
+void drawSetupOptions() {
     const ThemePalette& colors = theme();
-    constexpr int contentLeft = 40;
-    constexpr int contentRight = 238;
-    constexpr int contentCenter = (contentLeft + contentRight) / 2;
-    const int valueWidth = textWidth(value, 2);
-    const int valueX = contentCenter - valueWidth / 2;
-    drawText(valueX - 24, 66, "<", colors.secondary, 2);
-    drawText(valueX, 66, value, colors.text, 2);
-    drawText(valueX + valueWidth + 12, 66, ">", colors.secondary, 2);
+    const int count = setupChoiceCount(setupRow);
+    const int currentIndex = setupChoiceIndex(setupRow);
+    char previous[24];
+    char current[24];
+    char next[24];
+    char selected[28];
+    formatSetupChoice(setupRow, currentIndex - 1, previous, sizeof(previous));
+    formatSetupChoice(setupRow, currentIndex, current, sizeof(current));
+    formatSetupChoice(setupRow, (currentIndex + 1) % count, next, sizeof(next));
+    std::snprintf(selected, sizeof(selected), "<%s>", current);
+
+    char label[24];
+    std::snprintf(label, sizeof(label), "%s OPTIONS",
+                  kSetupLabels[static_cast<std::size_t>(setupRow)]);
+    drawCenteredText(94, label, colors.secondary, 1);
+
+    constexpr int gap = 10;
+    const int totalWidth = textWidth(previous) + gap + textWidth(selected) + gap +
+                           textWidth(next);
+    int x = std::max(4, (240 - totalWidth) / 2);
+    drawText(x, 106, previous, colors.muted, 1);
+    x += textWidth(previous) + gap;
+    drawText(x, 106, selected, colors.text, 1);
+    x += textWidth(selected) + gap;
+    drawText(x, 106, next, colors.muted, 1);
 }
 
-void drawSetupWheel() {
+void drawSetupMenu() {
     const ThemePalette& colors = theme();
     M5Cardputer.Display.fillRect(0, 29, 240, 90, colors.background);
-    drawSetupPositionRail();
-    drawSetupNeighbor(setupRow - 1, 31, 40);
-    M5Cardputer.Display.drawFastHLine(42, 52, 190, colors.surfaceStrong);
-
-    drawCenteredTextInRegion(38, 238, 56,
-                             kSetupLabels[static_cast<std::size_t>(setupRow)],
-                             colors.secondary, 1);
-    char value[24];
-    formatSetupValue(setupRow, value, sizeof(value));
-    drawSetupActiveValue(value);
-
-    M5Cardputer.Display.drawFastHLine(42, 87, 190, colors.surfaceStrong);
-    drawSetupNeighbor(setupRow + 1, 91, 100);
-    if (setupRow == 3) drawThemeIndicator(124, 97);
+    for (int row = 0; row < static_cast<int>(kSetupLabels.size()); ++row) {
+        drawSetupRow(row);
+    }
+    M5Cardputer.Display.drawFastHLine(8, 90, 224, colors.surfaceStrong);
+    drawSetupOptions();
 }
 
 void drawSetup() {
@@ -704,7 +719,7 @@ void drawSetup() {
     drawCenteredText(4, "NEW MATCH", colors.accent, 2);
     drawPiece(214, 3, makePiece(Color::White, PieceType::Knight));
     M5Cardputer.Display.drawFastHLine(8, 27, 224, colors.accent);
-    drawSetupWheel();
+    drawSetupMenu();
     M5Cardputer.Display.drawFastHLine(8, 119, 224, colors.accent);
     drawText(8, 126, "ESC HOME", colors.secondary, 1);
     drawText(172, 126, "ENTER PLAY", colors.text, 1);
@@ -924,7 +939,7 @@ void redrawAfterAction(const UiSnapshot& before) {
                                       before.levelIndex != levelIndex ||
                                       before.coachMode != coachMode;
             if (rowChanged || valueChanged) {
-                drawSetupWheel();
+                drawSetupMenu();
                 changed = true;
             }
             break;

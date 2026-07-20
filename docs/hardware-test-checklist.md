@@ -41,11 +41,11 @@ Record the firmware commit and any failures when testing a release.
   spacing. Up/Down must move only the compact cursor between Continue and New
   Game without drawing an underline or large button box; Enter opens the
   selection.
-- On New Match, confirm the active setting stays large and centered, its previous
-  and next settings are smaller and dimmed, and no large frame surrounds the
-  selection. Confirm exactly four short rail segments appear on the left and the
-  highlighted segment follows Up/Down. Up/Down stops at the ends, and Left/Right
-  changes the value inside `< >`.
+- On New Match, confirm all four setting names and current values remain visible.
+  Up/Down moves the arrow and color emphasis without hiding another setting.
+  Confirm the options strip names the selected setting and shows its previous,
+  current, and next choices. Up/Down stops at the ends, and Left/Right moves the
+  centered `<current>` choice through the available values.
 - Confirm Enter or Space starts immediately from every New Match setting, while
   Backspace/Esc returns Home without erasing a saved game.
 - Navigate with `Fn` plus each printed arrow key.
