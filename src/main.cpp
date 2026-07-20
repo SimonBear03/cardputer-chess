@@ -294,6 +294,13 @@ void drawCenteredText(int y, const char* value, std::uint16_t color, int size = 
     drawText(std::max(0, (240 - textWidth(value, size)) / 2), y, value, color, size);
 }
 
+void drawCenteredTextInRegion(int left, int right, int y, const char* value,
+                              std::uint16_t color, int size = 1) {
+    const int width = textWidth(value, size);
+    drawText(std::max(left, left + (right - left - width) / 2), y, value, color,
+             size);
+}
+
 void drawPanelText(int y, const char* value, std::uint16_t color) {
     char clipped[kPanelTextChars + 1]{};
     std::snprintf(clipped, sizeof(clipped), "%.*s", kPanelTextChars, value);
@@ -596,29 +603,32 @@ const char* homeActionLabel(int row) {
 
 void drawHomeAction(int row) {
     const ThemePalette& colors = theme();
-    const int firstY = resumeAvailable ? 89 : 100;
-    const int y = firstY + row * 20;
-    M5Cardputer.Display.fillRect(48, y, 144, 17, colors.background);
+    const int firstY = resumeAvailable ? 72 : 83;
+    const int y = firstY + row * 18;
+    const char* label = homeActionLabel(row);
+    const int labelX = (240 - textWidth(label)) / 2;
+    M5Cardputer.Display.fillRect(70, y, 100, 17, colors.background);
     if (homeRow == row) {
-        M5Cardputer.Display.fillRoundRect(48, y, 144, 17, 4, colors.surfaceStrong);
-        M5Cardputer.Display.drawRoundRect(48, y, 144, 17, 4, colors.accent);
+        drawText(labelX - 18, y + 2, ">", colors.accent, 1);
+        M5Cardputer.Display.fillRect(labelX, y + 13, textWidth(label) / 2, 2,
+                                     colors.accent);
+        M5Cardputer.Display.fillRect(labelX + textWidth(label) / 2, y + 13,
+                                     textWidth(label) - textWidth(label) / 2, 2,
+                                     colors.secondary);
     }
-    drawCenteredText(y + 5, homeActionLabel(row),
-                     homeRow == row ? colors.text : colors.muted, 1);
+    drawCenteredText(y + 2, label,
+                     homeRow == row ? colors.secondary : colors.muted, 1);
 }
 
 void drawHome() {
     const ThemePalette& colors = theme();
-    M5Cardputer.Display.fillRect(0, 0, 240, 33, colors.surface);
-    M5Cardputer.Display.fillRect(0, 0, 4, 33, colors.accent);
-    drawCenteredText(4, "CARDPUTER", colors.accent, 1);
-    drawCenteredText(14, "CHESS", colors.text, 2);
-    M5Cardputer.Display.drawFastHLine(4, 32, 236, colors.accent);
-
-    drawPieceScaled(97, 34, makePiece(Color::White, PieceType::Knight), 3);
-    drawCenteredText(80, "OFFLINE POCKET GAME", colors.muted, 1);
+    M5Cardputer.Display.fillScreen(colors.background);
+    drawCenteredText(3, "CARDPUTER", colors.accent, 1);
+    drawCenteredText(13, "CHESS", colors.text, 3);
+    drawPieceScaled(104, 38, makePiece(Color::White, PieceType::Knight), 2);
     for (int row = 0; row < homeActionCount(); ++row) drawHomeAction(row);
-    drawCenteredText(126, "ARROWS SELECT   ENTER OPEN", colors.secondary, 1);
+    drawText(8, 126, "ARROWS SELECT", colors.secondary, 1);
+    drawText(172, 126, "ENTER OPEN", colors.text, 1);
 }
 
 constexpr std::array<const char*, 4> kSetupLabels = {
@@ -635,51 +645,74 @@ void formatSetupValue(int row, char* value, std::size_t valueSize) {
     } else {
         std::snprintf(value, valueSize, "%s", theme().name);
     }
+    for (std::size_t index = 0; value[index] != '\0'; ++index) {
+        value[index] = static_cast<char>(
+            std::toupper(static_cast<unsigned char>(value[index])));
+    }
 }
 
-void drawSetupNeighbor(int row, int y) {
+void drawSetupNeighbor(int row, int labelY, int valueY) {
     if (row < 0 || row >= static_cast<int>(kSetupLabels.size())) return;
     char value[24];
     formatSetupValue(row, value, sizeof(value));
-    char line[40];
-    std::snprintf(line, sizeof(line), "%s  %s",
-                  kSetupLabels[static_cast<std::size_t>(row)], value);
-    drawCenteredText(y, line, theme().muted, 1);
+    drawCenteredTextInRegion(38, 238, labelY,
+                             kSetupLabels[static_cast<std::size_t>(row)],
+                             theme().muted, 1);
+    drawCenteredTextInRegion(38, 238, valueY, value, theme().muted, 1);
+}
+
+void drawSetupPositionRail() {
+    const ThemePalette& colors = theme();
+    for (int row = 0; row < static_cast<int>(kSetupLabels.size()); ++row) {
+        const std::uint16_t color = row == setupRow ? colors.accent
+                                                    : colors.surfaceStrong;
+        M5Cardputer.Display.fillRect(12, 35 + row * 17, 4, 10, color);
+    }
+    M5Cardputer.Display.fillRect(28, 56, 2, 32, colors.accent);
+    drawText(34, 68, ">", colors.accent, 1);
+}
+
+void drawSetupActiveValue(const char* value) {
+    const ThemePalette& colors = theme();
+    constexpr int contentLeft = 40;
+    constexpr int contentRight = 238;
+    constexpr int contentCenter = (contentLeft + contentRight) / 2;
+    const int valueWidth = textWidth(value, 2);
+    const int valueX = contentCenter - valueWidth / 2;
+    drawText(valueX - 24, 66, "<", colors.secondary, 2);
+    drawText(valueX, 66, value, colors.text, 2);
+    drawText(valueX + valueWidth + 12, 66, ">", colors.secondary, 2);
 }
 
 void drawSetupWheel() {
     const ThemePalette& colors = theme();
-    M5Cardputer.Display.fillRect(10, 37, 220, 12, colors.background);
-    M5Cardputer.Display.fillRect(10, 51, 220, 46, colors.background);
-    M5Cardputer.Display.fillRect(10, 102, 220, 12, colors.background);
+    M5Cardputer.Display.fillRect(0, 29, 240, 90, colors.background);
+    drawSetupPositionRail();
+    drawSetupNeighbor(setupRow - 1, 31, 40);
+    M5Cardputer.Display.drawFastHLine(42, 52, 190, colors.surfaceStrong);
 
-    drawSetupNeighbor(setupRow - 1, 39);
-
-    M5Cardputer.Display.fillRoundRect(10, 51, 220, 46, 5, colors.surface);
-    M5Cardputer.Display.drawRoundRect(10, 51, 220, 46, 5, colors.accent);
-    M5Cardputer.Display.fillRoundRect(10, 51, 4, 46, 2, colors.accent);
-    drawCenteredText(57, kSetupLabels[static_cast<std::size_t>(setupRow)],
-                     colors.accent, 1);
+    drawCenteredTextInRegion(38, 238, 56,
+                             kSetupLabels[static_cast<std::size_t>(setupRow)],
+                             colors.secondary, 1);
     char value[24];
     formatSetupValue(setupRow, value, sizeof(value));
-    char selected[32];
-    std::snprintf(selected, sizeof(selected), "< %s >", value);
-    drawCenteredText(69, selected, colors.text, 2);
-    if (setupRow == 3) drawThemeIndicator(104, 87);
+    drawSetupActiveValue(value);
 
-    drawSetupNeighbor(setupRow + 1, 104);
+    M5Cardputer.Display.drawFastHLine(42, 87, 190, colors.surfaceStrong);
+    drawSetupNeighbor(setupRow + 1, 91, 100);
+    if (setupRow == 3) drawThemeIndicator(124, 97);
 }
 
 void drawSetup() {
     const ThemePalette& colors = theme();
-    M5Cardputer.Display.fillRect(0, 0, 240, 33, colors.surface);
-    M5Cardputer.Display.fillRect(0, 0, 4, 33, colors.accent);
-    drawText(12, 7, "NEW MATCH", colors.text, 2);
-    drawPiece(214, 7, makePiece(Color::White, PieceType::Knight));
-    M5Cardputer.Display.drawFastHLine(4, 32, 236, colors.accent);
+    M5Cardputer.Display.fillScreen(colors.background);
+    drawCenteredText(4, "NEW MATCH", colors.accent, 2);
+    drawPiece(214, 3, makePiece(Color::White, PieceType::Knight));
+    M5Cardputer.Display.drawFastHLine(8, 27, 224, colors.accent);
     drawSetupWheel();
-    drawText(10, 126, "ESC HOME", colors.muted, 1);
-    drawText(166, 126, "ENTER PLAY", colors.secondary, 1);
+    M5Cardputer.Display.drawFastHLine(8, 119, 224, colors.accent);
+    drawText(8, 126, "ESC HOME", colors.secondary, 1);
+    drawText(172, 126, "ENTER PLAY", colors.text, 1);
 }
 
 void drawPromotionChoice(int index) {

@@ -1,10 +1,29 @@
 # Design QA
 
-> **Current scope:** The board, pieces, and three palettes below remain the
-> accepted visual baseline. The listed setup screenshots document the previous
-> four-row screen and are historical, not evidence for the new Home and vertical
-> New Match wheel. The new shell deliberately awaits physical-LCD review; the
-> unfinished web simulator was not used for this upgrade.
+> **Current scope:** The Home and New Match shell now follows the selected
+> combined retro-console reference. The board, pieces, and three palettes below
+> remain the accepted visual baseline. Historical setup screenshots are not
+> evidence for the new shell. The unfinished web simulator was not used.
+
+## Current shell evidence
+
+- Selected source visual truth:
+  `/Users/simon/.codex/generated_images/019f7830-7f59-7980-aa36-07eef070f9cc/exec-49d98012-0280-4553-8535-97bb248074d7.png`
+- Target viewport: 240×135 pixels, matching the Cardputer-Adv LCD
+- Reference states: Home with Continue selected; New Match focused on Level 4
+- Implemented states: Home with compact cursor/underline actions; New Match
+  with a four-segment setting rail, smaller neighboring settings, centered
+  active value, and no enclosing selection box
+- Implementation screenshot: unavailable by design for this pass. Simon asked
+  not to use the unfinished simulator, and the physical LCD cannot be captured
+  directly by the firmware toolchain.
+- Code/build evidence: `src/main.cpp` compiles for `m5stack-stamps3`; the 303
+  host assertions and both engine fingerprints remain unchanged.
+
+The source and an implementation screenshot therefore cannot yet be placed in
+the required same-viewport comparison. Exact LCD spacing, rasterization, color,
+and absence of clipped text remain pending a physical-device inspection or a
+straight-on photo from Simon.
 
 ## Evidence
 
@@ -44,7 +63,7 @@ palettes, geometry, and generated piece masks. Their monospaced font is a close
 desktop stand-in for M5GFX's fixed 6×8 bitmap font; exact LCD rasterization and
 panel color remain part of the physical-device check.
 
-## Findings
+## Accepted board and piece findings
 
 No actionable P0, P1, or P2 mismatch remains.
 
@@ -195,4 +214,4 @@ assets, and visible copy are coherent at the target viewport.
   contrast, and dirty-region stability on the physical LCD under both
   bright-room and low-light conditions.
 
-final result: board and piece baseline passed; new shell pending physical review
+final result: blocked

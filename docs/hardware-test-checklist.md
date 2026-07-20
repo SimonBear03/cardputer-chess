@@ -37,10 +37,14 @@ Record the firmware commit and any failures when testing a release.
 - Change Coach through Off, On demand, and Always; reboot and confirm it persists.
 - Change Theme among Classic, Neon, and Royal from setup and the game menu;
   reboot and confirm it persists.
-- On Home, confirm Up/Down selects Continue or New Game and Enter opens it.
+- On Home, confirm the title, knight, actions, and footer have even vertical
+  spacing. Up/Down must move the compact cursor and underline between Continue
+  and New Game without drawing a large button box; Enter opens the selection.
 - On New Match, confirm the active setting stays large and centered, its previous
-  and next settings are smaller and dimmed, Up/Down stops at the ends, and
-  Left/Right changes the value inside `< >`.
+  and next settings are smaller and dimmed, and no large frame surrounds the
+  selection. Confirm exactly four short rail segments appear on the left and the
+  highlighted segment follows Up/Down. Up/Down stops at the ends, and Left/Right
+  changes the value inside `< >`.
 - Confirm Enter or Space starts immediately from every New Match setting, while
   Backspace/Esc returns Home without erasing a saved game.
 - Navigate with `Fn` plus each printed arrow key.
