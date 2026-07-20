@@ -4,13 +4,17 @@
 from __future__ import annotations
 
 import argparse
+import json
 import logging
+import math
+from pathlib import Path
 import shlex
 import subprocess
 from typing import TextIO
 
 import chess
 import chess.engine
+import chess.pgn
 
 
 OPENINGS = (
@@ -33,6 +37,24 @@ OPENINGS = (
 )
 
 
+def load_openings(path: str) -> list[tuple[str, str]]:
+    if not path:
+        return [(f"builtin-{index + 1}", moves) for index, moves in enumerate(OPENINGS)]
+    openings: list[tuple[str, str]] = []
+    for raw_line in Path(path).read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        name, separator, moves = line.partition("|")
+        if not separator or not name.strip() or not moves.strip():
+            raise SystemExit(f"invalid opening line: {raw_line!r}")
+        starting_board(moves.strip())
+        openings.append((name.strip(), moves.strip()))
+    if not openings:
+        raise SystemExit(f"opening file is empty: {path}")
+    return openings
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--cardputer", required=True, help="Cardputer Chess UCI command")
@@ -51,8 +73,17 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--depth", type=int, default=5)
     parser.add_argument("--movetime-ms", type=int, default=0)
-    parser.add_argument("--opening-pairs", type=int, default=len(OPENINGS))
-    parser.add_argument("--max-plies", type=int, default=160)
+    parser.add_argument("--cardputer-nodes", type=int, default=0)
+    parser.add_argument("--cardputer-movetime-ms", type=int, default=0)
+    parser.add_argument("--opponent-movetime-ms", type=int, default=0)
+    parser.add_argument("--opponent-elo", type=int, default=0)
+    parser.add_argument("--cardputer-hash-kb", type=int, default=64)
+    parser.add_argument("--opening-file", default="bench/openings.tsv")
+    parser.add_argument("--opening-pairs", type=int, default=0)
+    parser.add_argument("--repetitions", type=int, default=1)
+    parser.add_argument("--max-plies", type=int, default=240)
+    parser.add_argument("--pgn-output", default="")
+    parser.add_argument("--json-output", default="")
     parser.add_argument("--trace", action="store_true")
     return parser.parse_args()
 
@@ -143,13 +174,47 @@ def starting_board(opening: str) -> chess.Board:
     return board
 
 
+def search_limit(nodes: int, movetime_ms: int, depth: int) -> chess.engine.Limit:
+    if nodes > 0:
+        return chess.engine.Limit(nodes=nodes)
+    if movetime_ms > 0:
+        return chess.engine.Limit(time=movetime_ms / 1000.0)
+    return chess.engine.Limit(depth=depth)
+
+
+def wilson_interval(
+    score: float, games: int, z: float = 1.959963984540054
+) -> tuple[float, float]:
+    if games <= 0:
+        return (0.0, 1.0)
+    proportion = score / games
+    z_squared = z * z
+    denominator = 1.0 + z_squared / games
+    center = (proportion + z_squared / (2.0 * games)) / denominator
+    margin = (
+        z
+        * math.sqrt(
+            (proportion * (1.0 - proportion) + z_squared / (4.0 * games)) / games
+        )
+        / denominator
+    )
+    return (max(0.0, center - margin), min(1.0, center + margin))
+
+
+def elo_delta(proportion: float) -> float:
+    bounded = min(1.0 - 1e-9, max(1e-9, proportion))
+    return 400.0 * math.log10(bounded / (1.0 - bounded))
+
+
 def play_game(
     cardputer: chess.engine.SimpleEngine,
     opponent: chess.engine.SimpleEngine | ForceModeXBoard,
     cardputer_white: bool,
     opening: str,
     depth: int,
-    movetime_ms: int,
+    cardputer_nodes: int,
+    cardputer_movetime_ms: int,
+    opponent_movetime_ms: int,
     max_plies: int,
     trace: bool,
 ) -> tuple[chess.Outcome | None, chess.Board]:
@@ -164,16 +229,13 @@ def play_game(
         if outcome is not None:
             return outcome, board
         cardputer_turn = board.turn == (chess.WHITE if cardputer_white else chess.BLACK)
-        limit = (
-            chess.engine.Limit(time=movetime_ms / 1000.0)
-            if movetime_ms > 0
-            else chess.engine.Limit(depth=depth)
-        )
         if cardputer_turn:
             if trace:
                 print(f"requesting Cardputer move at ply={len(board.move_stack)}", flush=True)
             result = cardputer.play(
-                board, limit, game=game_token
+                board,
+                search_limit(cardputer_nodes, cardputer_movetime_ms, depth),
+                game=game_token,
             )
             if result.move is None or result.move not in board.legal_moves:
                 raise RuntimeError(
@@ -192,7 +254,7 @@ def play_game(
                 print(f"ply={len(board.move_stack)} opponent={move.uci()}", flush=True)
         else:
             result = opponent.play(
-                board, limit, game=game_token
+                board, search_limit(0, opponent_movetime_ms, depth), game=game_token
             )
             if result.move is None or result.move not in board.legal_moves:
                 raise RuntimeError(
@@ -209,16 +271,26 @@ def play_game(
 
 def main() -> int:
     args = parse_args()
-    if args.movetime_ms > 0 and args.opponent_protocol.startswith("xboard-force"):
+    if args.movetime_ms > 0:
+        if args.cardputer_movetime_ms > 0 or args.opponent_movetime_ms > 0:
+            raise SystemExit("--movetime-ms cannot be combined with per-engine movetime")
+        args.cardputer_movetime_ms = args.movetime_ms
+        args.opponent_movetime_ms = args.movetime_ms
+    if args.opponent_movetime_ms > 0 and args.opponent_protocol.startswith(
+        "xboard-force"
+    ):
         parser_message = "--movetime-ms currently requires a UCI/setboard opponent"
         raise SystemExit(parser_message)
     if args.opponent_option and args.opponent_protocol != "uci":
         raise SystemExit("--opponent-option requires a UCI opponent")
+    if args.opponent_elo > 0 and args.opponent_protocol != "uci":
+        raise SystemExit("--opponent-elo requires a UCI opponent")
     if args.trace:
         logging.basicConfig(level=logging.DEBUG)
     if args.trace:
         print("launching Cardputer engine", flush=True)
     cardputer = launch(args.cardputer, "uci", args.trace)
+    cardputer.configure({"Hash": max(1, args.cardputer_hash_kb)})
     if args.trace:
         print("launching opponent", flush=True)
     opponent: chess.engine.SimpleEngine | ForceModeXBoard
@@ -229,55 +301,134 @@ def main() -> int:
         )
     else:
         opponent = launch(args.opponent, args.opponent_protocol, args.trace)
-        opponent.configure(parse_options(args.opponent_option))
+        opponent_options = parse_options(args.opponent_option)
+        if args.opponent_elo > 0:
+            opponent_options["UCI_LimitStrength"] = "true"
+            opponent_options["UCI_Elo"] = str(args.opponent_elo)
+        opponent.configure(opponent_options)
     if args.trace:
         print("engines ready", flush=True)
-    wins = draws = losses = 0
+    cardputer_id = dict(cardputer.id)
+    opponent_id = dict(opponent.id) if not isinstance(opponent, ForceModeXBoard) else {}
+    openings = load_openings(args.opening_file)
+    wins = draws = losses = capped_draws = 0
+    pgn_path = Path(args.pgn_output) if args.pgn_output else None
+    if pgn_path is not None:
+        pgn_path.parent.mkdir(parents=True, exist_ok=True)
+    pgn_stream = pgn_path.open("w", encoding="utf-8") if pgn_path else None
     try:
-        pairs = max(1, min(args.opening_pairs, len(OPENINGS)))
+        pairs = (
+            len(openings)
+            if args.opening_pairs <= 0
+            else min(args.opening_pairs, len(openings))
+        )
+        repetitions = max(1, args.repetitions)
         game_number = 0
-        for opening_index, opening in enumerate(OPENINGS[:pairs], start=1):
-            for cardputer_white in (True, False):
-                game_number += 1
-                outcome, board = play_game(
-                    cardputer,
-                    opponent,
-                    cardputer_white,
-                    opening,
-                    args.depth,
-                    args.movetime_ms,
-                    args.max_plies,
-                    args.trace,
-                )
-                if outcome is None:
-                    result = "1/2-1/2 (ply cap)"
-                    draws += 1
-                else:
-                    result = outcome.result()
-                    cardputer_won = (
-                        outcome.winner == chess.WHITE and cardputer_white
-                    ) or (outcome.winner == chess.BLACK and not cardputer_white)
-                    if outcome.winner is None:
+        for repetition in range(1, repetitions + 1):
+            for opening_index, (opening_name, opening) in enumerate(
+                openings[:pairs], start=1
+            ):
+                for cardputer_white in (True, False):
+                    game_number += 1
+                    outcome, board = play_game(
+                        cardputer,
+                        opponent,
+                        cardputer_white,
+                        opening,
+                        args.depth,
+                        args.cardputer_nodes,
+                        args.cardputer_movetime_ms,
+                        args.opponent_movetime_ms,
+                        args.max_plies,
+                        args.trace,
+                    )
+                    if outcome is None:
+                        result = "1/2-1/2 (ply cap)"
                         draws += 1
-                    elif cardputer_won:
-                        wins += 1
+                        capped_draws += 1
                     else:
-                        losses += 1
-                side = "White" if cardputer_white else "Black"
-                print(
-                    f"game={game_number} opening={opening_index} "
-                    f"cardputer={side} result={result} plies={len(board.move_stack)}",
-                    flush=True,
-                )
+                        result = outcome.result()
+                        cardputer_won = (
+                            outcome.winner == chess.WHITE and cardputer_white
+                        ) or (outcome.winner == chess.BLACK and not cardputer_white)
+                        if outcome.winner is None:
+                            draws += 1
+                        elif cardputer_won:
+                            wins += 1
+                        else:
+                            losses += 1
+                    side = "White" if cardputer_white else "Black"
+                    print(
+                        f"game={game_number} repetition={repetition} "
+                        f"opening={opening_index}:{opening_name} "
+                        f"cardputer={side} result={result} "
+                        f"plies={len(board.move_stack)}",
+                        flush=True,
+                    )
+                    if pgn_stream is not None:
+                        game = chess.pgn.Game.from_board(board)
+                        game.headers["Event"] = "Cardputer Chess Elo calibration"
+                        game.headers["Round"] = str(game_number)
+                        game.headers["White"] = (
+                            "Cardputer Chess" if cardputer_white else "Opponent"
+                        )
+                        game.headers["Black"] = (
+                            "Opponent" if cardputer_white else "Cardputer Chess"
+                        )
+                        game.headers["Opening"] = opening_name
+                        game.headers["Result"] = (
+                            "1/2-1/2" if outcome is None else outcome.result()
+                        )
+                        print(game, file=pgn_stream, end="\n\n")
     finally:
         cardputer.quit()
         opponent.quit()
+        if pgn_stream is not None:
+            pgn_stream.close()
     total = wins + draws + losses
     score = wins + 0.5 * draws
+    score_fraction = score / total
+    score_low, score_high = wilson_interval(score, total)
     print(
         f"summary games={total} wins={wins} draws={draws} losses={losses} "
-        f"score={score:.1f}/{total} percent={100.0 * score / total:.1f}%"
+        f"capped_draws={capped_draws} score={score:.1f}/{total} "
+        f"percent={100.0 * score_fraction:.1f}% "
+        f"score_ci95={100.0 * score_low:.1f}-{100.0 * score_high:.1f}%"
     )
+    result_data: dict[str, object] = {
+        "games": total,
+        "wins": wins,
+        "draws": draws,
+        "losses": losses,
+        "capped_draws": capped_draws,
+        "score": score,
+        "score_percent": 100.0 * score_fraction,
+        "score_ci95_percent": [100.0 * score_low, 100.0 * score_high],
+        "cardputer_nodes": args.cardputer_nodes,
+        "cardputer_movetime_ms": args.cardputer_movetime_ms,
+        "opponent_movetime_ms": args.opponent_movetime_ms,
+        "opponent_elo": args.opponent_elo,
+        "opening_pairs": pairs,
+        "repetitions": repetitions,
+        "cardputer_engine": cardputer_id,
+        "opponent_engine": opponent_id,
+    }
+    if args.opponent_elo > 0:
+        estimate = args.opponent_elo + elo_delta(score_fraction)
+        estimate_low = args.opponent_elo + elo_delta(score_low)
+        estimate_high = args.opponent_elo + elo_delta(score_high)
+        result_data["estimated_elo"] = estimate
+        result_data["estimated_elo_ci95"] = [estimate_low, estimate_high]
+        print(
+            f"rating opponent_elo={args.opponent_elo} estimate={estimate:.0f} "
+            f"elo_ci95={estimate_low:.0f}-{estimate_high:.0f}"
+        )
+    if args.json_output:
+        json_path = Path(args.json_output)
+        json_path.parent.mkdir(parents=True, exist_ok=True)
+        json_path.write_text(
+            json.dumps(result_data, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
     return 0
 
 
