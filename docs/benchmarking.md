@@ -102,34 +102,54 @@ wins, 14 draws, and 1 loss over 32 paired games at an equal 50 ms per move:
 **24/32, or 75.0%**. A bishop-development bonus and other intermediate ideas
 were rejected when they reduced oracle or match results.
 
-## Rating status and target
+## Stockfish calibration
 
-Cardputer Chess does not yet claim an absolute Elo. The 75% equal-time score is
-about **+191 Elo relative to the saved original build** under the standard
-rating formula, but 32 games leave a wide uncertainty interval and say nothing
-about an external human rating pool. Likewise, the TSCP and Fairy-Max results
-are useful regression tests, not an honest conversion to human Elo.
+On 2026-07-20, the portable engine at revision `86a4eca` played a paired
+gauntlet against Stockfish 18 on an Apple Silicon Mac. A 16-game ladder first
+located the competitive range; the recorded calibration then used all 32
+openings in `bench/openings.tsv`, once with each color, for 64 games total.
 
-The next calibration milestone is a paired gauntlet against Stockfish with
-`UCI_LimitStrength` enabled and `UCI_Elo` stepped upward from its
-[documented minimum](https://official-stockfish.github.io/docs/stockfish-wiki/Stockfish-FAQ.html#how-do-skill-level-and-uci_elo-work).
-Results must record the Stockfish version, opening set, time or node control,
-hash, game cap, and confidence interval. Host movetime measures the portable
-engine on the Mac; a Cardputer-specific rating additionally needs the physical
-device's nodes-per-second so the host runner can reproduce its real search
-budget.
+| Condition | Value |
+| --- | --- |
+| Opponent | Stockfish 18, `UCI_LimitStrength=true`, `UCI_Elo=2350` |
+| Time control | 100 ms per move for each engine |
+| Threads | One Stockfish thread; one Cardputer Chess process |
+| Hash | Stockfish 64 MiB; Cardputer Chess 64 KiB |
+| Opening book | Disabled in the host UCI adapter |
+| Game limit | 240 plies; three games reached the cap and counted as draws |
+| Result | 27 wins, 12 draws, 25 losses; **33/64 (51.6%)** |
+| Estimated rating | **2361 Stockfish-UCI Elo** |
+| Approximate 95% interval | **2277–2445** |
 
-The match runner accepts repeatable opponent options for that ladder:
+This is best reported as **roughly 2360 Elo under the documented host test**.
+It is not a FIDE rating, a prediction of performance against human tournament
+players, or yet the exact strength of the physical Cardputer. Elo is relative
+to a pool and test conditions, and Stockfish's `UCI_Elo` emulates reduced
+strength rather than creating a universal rating scale. The interval is also
+an approximate Wilson score conversion and does not model correlation between
+the color-reversed games.
+
+The result does establish a reproducible external baseline for future engine
+changes. A Cardputer-specific number still needs a reliable physical-device
+nodes-per-second measurement, followed by a host match at that fixed node
+budget. Until then, do not label 2360 as the handheld's tournament Elo.
+
+Reproduce the calibration with Stockfish 18 installed locally:
 
 ```sh
 uv run --with python-chess tools/match.py \
   --cardputer ./build/cardputer_chess_uci \
-  --opponent /path/to/stockfish --movetime-ms 100 \
-  --opponent-option UCI_LimitStrength=true \
-  --opponent-option UCI_Elo=1320
+  --opponent /path/to/stockfish \
+  --movetime-ms 100 --opponent-elo 2350 \
+  --opponent-option Threads=1 --opponent-option Hash=64 \
+  --opening-pairs 32 --max-plies 240 \
+  --pgn-output build/elo-2350.pgn \
+  --json-output build/elo-2350.json
 ```
 
-The engineering target for the next strength release is **+150 to +250 Elo at
-the same search budget and 64 KiB hash**, accepted only through paired matches
-and the oracle suite. This is deliberately a relative target until the external
-gauntlet produces a reproducible absolute baseline.
+The earlier 75% equal-time result against the saved original build is about
+**+191 Elo relative to that build** under the standard rating formula. It and
+the Stockfish calibration measure different comparisons and must not be added
+together. The engineering target for the next strength release remains **+150
+to +250 Elo at the same search budget and 64 KiB hash**, accepted only through
+paired matches and the oracle suite.

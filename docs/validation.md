@@ -9,6 +9,7 @@ contributors who want to verify a change before flashing or publishing it.
 | --- | --- |
 | Host rules, engine, and persistence tests | 303 assertions passed |
 | AddressSanitizer and UBSan | 303 assertions passed |
+| Host Stockfish calibration | 27 W, 12 D, 25 L at Stockfish-UCI 2350 |
 | Cardputer-Adv firmware build | Passed |
 | Static RAM | 178,180 / 327,680 bytes (54.4%) |
 | Flash image | 558,097 / 3,342,336 bytes (16.7%) |
@@ -55,6 +56,20 @@ make test-sanitize
 Current result: **303 assertions pass under AddressSanitizer and UBSan**.
 LeakSanitizer is disabled because it requires ptrace support that is unavailable
 in some sandboxed runners.
+
+## Host playing-strength calibration
+
+The portable engine played 64 color-reversed games against Stockfish 18 with
+both engines limited to 100 ms per move. Stockfish used one thread, a 64 MiB
+hash, and `UCI_LimitStrength` at `UCI_Elo=2350`; Cardputer Chess used its 64 KiB
+hash and no opening book. Across 32 paired openings it scored 27 wins, 12 draws,
+and 25 losses: **33/64, or 51.6%**.
+
+That corresponds to an estimated **2361 Stockfish-UCI Elo**, with an approximate
+95% interval of **2277–2445**. Three games reached the 240-ply limit and were
+counted as draws. This is a reproducible Apple Silicon Mac benchmark, not a FIDE
+rating or a physical-Cardputer rating. Exact commands, methodology, and caveats
+are recorded in [benchmarking.md](benchmarking.md).
 
 ## Firmware build
 

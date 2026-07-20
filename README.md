@@ -72,6 +72,13 @@ easier to remember.
 | 4 | Club | 9 | Master |
 | 5 | Skilled | 10 | Maximum |
 
+In a 64-game Apple Silicon Mac calibration at 100 ms per move, the host engine
+scored 51.6% against Stockfish 18 set to `UCI_Elo=2350`, for a rough estimate of
+**2360 Stockfish-UCI Elo** under those exact conditions. This is useful as an
+engine-development baseline; it is not a FIDE rating or yet a measurement of
+the Cardputer's physical search speed. See
+[benchmarking.md](docs/benchmarking.md) for the full setup and uncertainty.
+
 ## Reading chess moves
 
 The move history and Coach use Standard Algebraic Notation:
