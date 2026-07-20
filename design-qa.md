@@ -1,9 +1,10 @@
 # Design QA
 
-> **Current scope:** The Home and New Match shell now follows the selected
-> combined retro-console reference. The board, pieces, and three palettes below
-> remain the accepted visual baseline. Historical setup screenshots are not
-> evidence for the new shell. The unfinished web simulator was not used.
+> **Current scope:** The Home and New Match shell follows the selected combined
+> retro-console reference. Engine Bench extends the same palette, typography,
+> compact rows, and localized thinking treatment to a diagnostic screen. The
+> board and pieces remain the accepted visual baseline. The unfinished web
+> simulator was not used.
 
 ## Current shell evidence
 
@@ -17,7 +18,7 @@
 - Implementation screenshot: unavailable by design for this pass. Simon asked
   not to use the unfinished simulator, and the physical LCD cannot be captured
   directly by the firmware toolchain.
-- Code/build evidence: `src/main.cpp` compiles for `m5stack-stamps3`; the 303
+- Code/build evidence: `src/main.cpp` compiles for `m5stack-stamps3`; the 307
   host assertions and both engine fingerprints remain unchanged.
 
 The source and an implementation screenshot therefore cannot yet be placed in
@@ -188,14 +189,17 @@ assets, and visible copy are coherent at the target viewport.
   starts from every New Match setting; Up/Down moves through the four-row list,
   Left/Right changes the centered choice in the options strip, and Back returns
   Home without erasing a saved match.
-- Home, New Match, playing, promotion, Coach, pause, and game-over screens use the active
-  palette and the shared generated piece assets.
+- Home, New Match, playing, promotion, Coach, pause, game-over, and Engine Bench
+  screens use the active palette and the shared generated piece assets.
 - Board navigation redraws only dirty 15-pixel squares, and menu navigation
   redraws only dirty rows; there is no timed full-screen repaint loop.
 - Engine and Coach thinking use a 300 ms three-dot animation that redraws only
   the three small status dots per frame. Completed analysis exposes the best
   move in a bounded `NEXT <SAN>` panel line, and all variable panel copy is
   capped at 16 characters.
+- Engine Bench also animates only three dots during each physical search. Quick
+  updates its bounded content after each one-second position; Full updates only
+  between levels, so its forty searches do not create a repaint loop.
 - Match-start, positive Coach feedback, and game-result accents run for only six
   localized 120 ms frames and never repaint the board.
 - Theme selection uses one complete redraw rather than an overlay animation,

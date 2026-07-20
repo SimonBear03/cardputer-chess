@@ -16,6 +16,42 @@ and pawn/rook endings. A stable fingerprint records chosen moves and completed
 depths. Wall-clock NPS is useful only when the machine is otherwise idle;
 completed depth and move changes are the primary regression signals.
 
+## On-device benchmark
+
+Press `B` from the firmware Home screen to benchmark the actual ESP32-S3. This
+is not a simulator: every search runs through the production engine task on the
+Cardputer, with its real CPU, RAM, watchdog yielding, and 64 KiB transposition
+table. The benchmark uses trusted positions mirrored from `bench/positions.tsv`,
+clears the hash between samples, disables the opening book, and does not touch
+the saved game.
+
+**Quick Speed** runs six one-second, maximum-strength samples and reports median
+nodes per second, minimum and maximum observed speed, median nodes, and median
+completed depth. **Full Levels** runs four positions through the exact time,
+depth, error-window, and candidate-count configuration for each of the ten
+levels. It reports median nodes per move and depth per level. Results remain in
+RAM under **Last Result** until restart or the next run.
+
+The node count converts physical speed into a practical host search budget. If
+Maximum reports a median of `DEVICE_NODES` nodes per move, reproduce that amount
+of Cardputer work while keeping the Stockfish reference at a chosen time:
+
+```sh
+uv run --with python-chess tools/match.py \
+  --cardputer ./build/cardputer_chess_uci \
+  --opponent /path/to/stockfish \
+  --cardputer-nodes DEVICE_NODES \
+  --opponent-movetime-ms 100 --opponent-elo 2350 \
+  --opponent-option Threads=1 --opponent-option Hash=64 \
+  --opening-pairs 32 --max-plies 240
+```
+
+This node-equivalent match is an estimate, not direct ESP32-versus-Stockfish
+play. It removes the Mac's speed advantage while retaining automation and the
+same portable engine code. Position-dependent speed, transposition-table
+history during a real game, and the statistical uncertainty of the match still
+need to be stated with the result.
+
 `bench/positions.tsv` also stores Stockfish's top three moves at 500,000 nodes,
 scored as 3/2/1 points. Refresh those annotations with:
 

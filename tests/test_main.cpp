@@ -88,6 +88,18 @@ void testFenAndCoordinates() {
     expect(!Position::fromFen("8/8/8/8/8/8/8/8 w - - 0 1", &error).has_value(),
            "FEN without kings rejected");
     expect(!error.empty(), "invalid FEN reports reason");
+
+    Position reusable;
+    const std::string benchmarkFen =
+        "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
+    expect(reusable.loadFen(benchmarkFen, &error),
+           "in-place FEN load accepts a benchmark position");
+    expectEqual(reusable.toFen(), benchmarkFen,
+                "in-place FEN load preserves the complete position");
+    expect(!reusable.loadFen("8/8/8/8/8/8/8/8 w - - 0 1", &error),
+           "in-place FEN load rejects an invalid position");
+    expectEqual(reusable.toFen(), start.toFen(),
+                "failed in-place FEN load restores a valid start position");
 }
 
 void testResetToStartPosition() {

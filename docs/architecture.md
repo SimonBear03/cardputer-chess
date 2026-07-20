@@ -73,8 +73,8 @@ The 36 vetted opening lines compile into 163 unique position/move entries.
 
 `src/main.cpp` owns the home screen, New Match settings list, persisted
 level/color/Coach/theme preferences, board cursor and move selection, promotion
-chooser, direct LCD rendering, game history, Coach overlay, and the background
-engine task. Three shared palettes
+chooser, direct LCD rendering, game history, Coach overlay, the on-device
+engine benchmark, and the background engine task. Three shared palettes
 provide the Classic, Neon, and Royal themes without duplicating layouts or
 allocating framebuffers. Target-sized generated Staunton artwork is reduced to
 fixed 14×14 body/detail masks in `piece_glyphs.hpp`, so all six piece types have
@@ -119,6 +119,14 @@ event accent finishes. This avoids continuous tearing while preserving the
 64 KiB engine hash and 24 KiB search stack; a 240×135 16-bit framebuffer would
 consume another 64.8 KiB on a target with no PSRAM.
 
+The Home-screen `B` shortcut opens a diagnostic benchmark without altering the
+saved match. Quick mode measures six one-second searches at the strongest
+settings. Full mode applies each production level configuration to four fixed
+positions. Both parse FEN directly into the reusable static search position,
+clear the engine hash between samples, disable the opening book, and summarize
+median node budgets on the LCD. Full mode refreshes its content only between
+levels; during a search, only its three thinking dots change.
+
 The board uses 15×15-pixel squares, leaving native-font gutters for file and
 rank labels. Coordinate labels and piece placement both follow the human-side
 orientation, so the bottom-left label changes correctly when playing Black.
@@ -137,6 +145,7 @@ Left, Down, and Right. `W/A/S/D` are aliases for development and accessibility.
 - `U`: undo the human move and the engine reply
 - `H`: open Coach or begin on-demand analysis; Left/Right changes candidate and
   Enter focuses its origin square on the board
+- `B` from Home: open Quick Speed, Full Levels, or the latest benchmark report
 
 ## Concurrency
 

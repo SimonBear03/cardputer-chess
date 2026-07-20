@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cstddef>
 #include <cstdio>
 #include <cstring>
 
@@ -32,6 +33,11 @@ constexpr std::uint32_t kEventFrameMs = 120;
 constexpr std::uint8_t kEventFrameCount = 6;
 constexpr std::uint32_t kSearchTaskStackBytes = 24576;
 constexpr std::uint8_t kLevelPreferenceVersion = 2;
+constexpr std::uint32_t kQuickBenchmarkMoveTimeMs = 1000;
+constexpr std::size_t kQuickBenchmarkPositionCount = 6;
+constexpr std::size_t kFullBenchmarkPositionCount = 4;
+constexpr std::size_t kMaxBenchmarkCases =
+    static_cast<std::size_t>(kLevelCount) * kFullBenchmarkPositionCount;
 
 constexpr std::uint16_t rgb565(std::uint8_t red, std::uint8_t green,
                                std::uint8_t blue) {
@@ -47,6 +53,7 @@ enum class Screen : std::uint8_t {
     Coach,
     Pause,
     GameOver,
+    Benchmark,
 };
 enum class Action : std::uint8_t {
     None,
@@ -59,12 +66,15 @@ enum class Action : std::uint8_t {
     Menu,
     Undo,
     Coach,
+    Benchmark,
 };
 enum class SideChoice : std::uint8_t { White, Black, Random };
 enum class ThemeMode : std::uint8_t { Classic, Neon, Royal };
-enum class SearchPurpose : std::uint8_t { Opponent, Coach };
+enum class SearchPurpose : std::uint8_t { Opponent, Coach, Benchmark };
 enum class SaveSlot : std::uint8_t { None, A, B };
 enum class UiAnimation : std::uint8_t { None, GameStart, PositiveMove, Result };
+enum class BenchmarkMode : std::uint8_t { Quick, Full };
+enum class BenchmarkPhase : std::uint8_t { Menu, Running, Results };
 
 struct ThemePalette {
     const char* name;
@@ -116,6 +126,30 @@ struct GameRecord {
     std::array<char, 12> san{};
 };
 
+struct BenchmarkPosition {
+    const char* name;
+    const char* fen;
+};
+
+constexpr std::array<BenchmarkPosition, kQuickBenchmarkPositionCount>
+    kBenchmarkPositions = {{
+        {"START",
+         "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"},
+        {"KIWIPETE",
+         "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1"},
+        {"MIDDLEGAME",
+         "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10"},
+        {"PROMOTION",
+         "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8"},
+        {"ROOK ENDING",
+         "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1"},
+        {"PAWN ENDING",
+         "8/5pk1/4p1p1/3pP2p/3P1P1P/5KP1/8/8 w - - 0 38"},
+    }};
+
+constexpr std::array<std::size_t, kFullBenchmarkPositionCount>
+    kFullBenchmarkPositionIndices = {0, 1, 2, 4};
+
 struct UiSnapshot {
     Screen screen;
     ThemeMode themeMode;
@@ -160,6 +194,17 @@ SearchResult coachAnalysis{};
 CoachFeedback coachFeedback{};
 std::uint64_t coachAnalysisKey = 0;
 std::uint8_t coachLineIndex = 0;
+BenchmarkMode benchmarkMode = BenchmarkMode::Quick;
+BenchmarkPhase benchmarkPhase = BenchmarkPhase::Menu;
+int benchmarkMenuRow = 0;
+std::size_t benchmarkCaseIndex = 0;
+std::size_t benchmarkCaseCount = 0;
+std::array<std::uint64_t, kMaxBenchmarkCases> benchmarkNodes{};
+std::array<std::uint32_t, kMaxBenchmarkCases> benchmarkElapsedMs{};
+std::array<std::uint8_t, kMaxBenchmarkCases> benchmarkDepth{};
+bool benchmarkCancelRequested = false;
+bool benchmarkFailed = false;
+bool benchmarkHasResults = false;
 
 Position searchPosition = Position::startPosition();
 Position notationPosition = Position::startPosition();
@@ -232,6 +277,50 @@ void cycleTheme(int direction) {
     value = (value + (direction < 0 ? 2 : 1)) % 3;
     themeMode = static_cast<ThemeMode>(value);
     hasDrawnScreen = false;
+}
+
+std::uint64_t benchmarkNodesPerSecond(std::size_t caseIndex) {
+    const std::uint32_t elapsed = benchmarkElapsedMs[caseIndex];
+    return elapsed == 0 ? 0 : benchmarkNodes[caseIndex] * 1000U / elapsed;
+}
+
+template <typename Value, typename Reader>
+Value benchmarkMedian(std::size_t first, std::size_t count, Reader reader) {
+    std::array<Value, kQuickBenchmarkPositionCount> values{};
+    count = std::min<std::size_t>(count, values.size());
+    for (std::size_t index = 0; index < count; ++index) {
+        values[index] = reader(first + index);
+    }
+    std::sort(values.begin(), values.begin() + static_cast<std::ptrdiff_t>(count));
+    const std::size_t middle = count / 2U;
+    if ((count & 1U) != 0U) return values[middle];
+    return static_cast<Value>(values[middle - 1U] +
+                              (values[middle] - values[middle - 1U]) / 2U);
+}
+
+std::uint64_t benchmarkMedianNodes(std::size_t first, std::size_t count) {
+    return benchmarkMedian<std::uint64_t>(
+        first, count, [](std::size_t index) { return benchmarkNodes[index]; });
+}
+
+std::uint64_t benchmarkMedianNps(std::size_t first, std::size_t count) {
+    return benchmarkMedian<std::uint64_t>(first, count, benchmarkNodesPerSecond);
+}
+
+std::uint8_t benchmarkMedianDepth(std::size_t first, std::size_t count) {
+    return benchmarkMedian<std::uint8_t>(
+        first, count, [](std::size_t index) { return benchmarkDepth[index]; });
+}
+
+void formatCompactCount(std::uint64_t value, char* output, std::size_t outputSize) {
+    if (value < 1000U) {
+        std::snprintf(output, outputSize, "%llu",
+                      static_cast<unsigned long long>(value));
+        return;
+    }
+    std::snprintf(output, outputSize, "%llu.%lluK",
+                  static_cast<unsigned long long>(value / 1000U),
+                  static_cast<unsigned long long>((value % 1000U) / 100U));
 }
 
 void formatScore(std::int16_t scoreCp, char* output, std::size_t outputSize) {
@@ -615,8 +704,192 @@ void drawHome() {
     drawCenteredText(13, "CHESS", colors.text, 3);
     drawPieceScaled(104, 38, makePiece(Color::White, PieceType::Knight), 2);
     for (int row = 0; row < homeActionCount(); ++row) drawHomeAction(row);
-    drawText(8, 126, "ARROWS SELECT", colors.secondary, 1);
+    drawText(8, 126, "ARROWS", colors.secondary, 1);
+    drawText(99, 126, "B BENCH", colors.muted, 1);
     drawText(172, 126, "ENTER OPEN", colors.text, 1);
+}
+
+int benchmarkMenuCount() { return benchmarkHasResults ? 3 : 2; }
+
+void drawBenchmarkMenuRow(int row) {
+    const ThemePalette& colors = theme();
+    const int y = 41 + row * 27;
+    M5Cardputer.Display.fillRect(8, y - 3, 224, 24, colors.background);
+    if (benchmarkMenuRow == row) {
+        M5Cardputer.Display.fillRoundRect(8, y - 3, 224, 24, 3, colors.surface);
+        drawText(13, y, ">", colors.accent, 1);
+    }
+
+    const char* label = row == 0 ? "QUICK SPEED"
+                                  : (row == 1 ? "FULL LEVELS" : "LAST RESULT");
+    drawText(27, y, label,
+             benchmarkMenuRow == row ? colors.secondary : colors.text, 1);
+    if (row == 0) {
+        drawText(184, y, "~6 SEC", colors.muted, 1);
+        drawText(27, y + 10, "6 positions at strongest settings", colors.muted, 1);
+    } else if (row == 1) {
+        drawText(178, y, "~90 SEC", colors.muted, 1);
+        drawText(27, y + 10, "Actual workload for all 10 levels", colors.muted, 1);
+    } else {
+        drawText(184, y,
+                 benchmarkMode == BenchmarkMode::Quick ? "QUICK" : "FULL",
+                 colors.muted, 1);
+        drawText(27, y + 10, "Reopen the saved in-memory report", colors.muted, 1);
+    }
+}
+
+void drawBenchmarkMenu() {
+    const ThemePalette& colors = theme();
+    drawText(12, 28, "REAL ESP32 SEARCH - BOOK OFF", colors.muted, 1);
+    for (int row = 0; row < benchmarkMenuCount(); ++row) {
+        drawBenchmarkMenuRow(row);
+    }
+    drawText(8, 126, "ESC HOME", colors.secondary, 1);
+    drawText(166, 126, "ENTER RUN", colors.text, 1);
+}
+
+void drawBenchmarkProgress() {
+    const ThemePalette& colors = theme();
+    char line[48];
+    const bool quick = benchmarkMode == BenchmarkMode::Quick;
+    if (quick) {
+        std::snprintf(line, sizeof(line), "QUICK SPEED   POSITION %u / %u",
+                      static_cast<unsigned>(benchmarkCaseIndex + 1U),
+                      static_cast<unsigned>(benchmarkCaseCount));
+    } else {
+        const std::size_t level = benchmarkCaseIndex / kFullBenchmarkPositionCount;
+        std::snprintf(line, sizeof(line), "FULL LEVELS   LEVEL %u / %u",
+                      static_cast<unsigned>(level + 1U),
+                      static_cast<unsigned>(kLevelCount));
+    }
+    drawText(12, 31, line, colors.secondary, 1);
+
+    if (quick) {
+        drawCenteredText(48, kBenchmarkPositions[benchmarkCaseIndex].name,
+                         colors.text, 1);
+    } else {
+        const std::size_t level = benchmarkCaseIndex / kFullBenchmarkPositionCount;
+        std::snprintf(line, sizeof(line), "%u %s - 4 TEST POSITIONS",
+                      static_cast<unsigned>(level + 1U),
+                      levelConfig(static_cast<int>(level)).name);
+        drawCenteredText(48, line, colors.text, 1);
+    }
+    drawCenteredText(62, benchmarkCancelRequested ? "STOPPING" : "SEARCHING",
+                     benchmarkCancelRequested ? colors.check : colors.accent, 1);
+    drawThinkingDots(151, 66, colors.background);
+
+    M5Cardputer.Display.drawRoundRect(16, 76, 208, 10, 3, colors.surfaceStrong);
+    const int completedWidth = benchmarkCaseCount == 0
+                                   ? 0
+                                   : static_cast<int>(200U * benchmarkCaseIndex /
+                                                      benchmarkCaseCount);
+    if (completedWidth > 0) {
+        M5Cardputer.Display.fillRoundRect(20, 79, completedWidth, 4, 2,
+                                          colors.secondary);
+    }
+
+    if (benchmarkCaseIndex > 0) {
+        const std::size_t last = benchmarkCaseIndex - 1U;
+        char nodes[20];
+        formatCompactCount(benchmarkNodes[last], nodes, sizeof(nodes));
+        std::snprintf(line, sizeof(line), "LAST  %s NODES   %lu MS   D%u", nodes,
+                      static_cast<unsigned long>(benchmarkElapsedMs[last]),
+                      static_cast<unsigned>(benchmarkDepth[last]));
+        drawCenteredText(96, line, colors.muted, 1);
+    } else {
+        drawCenteredText(96, "WARMING ENGINE AND HASH", colors.muted, 1);
+    }
+    drawCenteredText(110, "SAVED GAME IS NOT CHANGED", colors.legal, 1);
+    drawText(8, 126, "ESC CANCEL", colors.secondary, 1);
+}
+
+void drawQuickBenchmarkResults() {
+    const ThemePalette& colors = theme();
+    const std::uint64_t medianNps =
+        benchmarkMedianNps(0, kQuickBenchmarkPositionCount);
+    const std::uint64_t medianNodes =
+        benchmarkMedianNodes(0, kQuickBenchmarkPositionCount);
+    const std::uint8_t medianDepth =
+        benchmarkMedianDepth(0, kQuickBenchmarkPositionCount);
+    std::uint64_t minimumNps = benchmarkNodesPerSecond(0);
+    std::uint64_t maximumNps = minimumNps;
+    for (std::size_t index = 1; index < kQuickBenchmarkPositionCount; ++index) {
+        minimumNps = std::min(minimumNps, benchmarkNodesPerSecond(index));
+        maximumNps = std::max(maximumNps, benchmarkNodesPerSecond(index));
+    }
+
+    char median[20];
+    char minimum[20];
+    char maximum[20];
+    char nodes[20];
+    char line[48];
+    formatCompactCount(medianNps, median, sizeof(median));
+    formatCompactCount(minimumNps, minimum, sizeof(minimum));
+    formatCompactCount(maximumNps, maximum, sizeof(maximum));
+    formatCompactCount(medianNodes, nodes, sizeof(nodes));
+    std::snprintf(line, sizeof(line), "%s NODES / SEC", median);
+    drawCenteredText(34, "MEDIAN DEVICE SPEED", colors.secondary, 1);
+    drawCenteredText(48, line, colors.text, 2);
+    std::snprintf(line, sizeof(line), "RANGE  %s - %s N/S", minimum, maximum);
+    drawCenteredText(72, line, colors.muted, 1);
+    std::snprintf(line, sizeof(line), "MEDIAN  %s NODES   DEPTH %u", nodes,
+                  static_cast<unsigned>(medianDepth));
+    drawCenteredText(88, line, colors.accent, 1);
+    drawCenteredText(105, "SEND A PHOTO OF THIS SCREEN", colors.legal, 1);
+}
+
+void drawFullBenchmarkResults() {
+    const ThemePalette& colors = theme();
+    char nodes[20];
+    char line[48];
+    for (int level = 0; level < kLevelCount; ++level) {
+        const std::size_t first =
+            static_cast<std::size_t>(level) * kFullBenchmarkPositionCount;
+        formatCompactCount(
+            benchmarkMedianNodes(first, kFullBenchmarkPositionCount), nodes,
+            sizeof(nodes));
+        std::snprintf(line, sizeof(line), "L%-2d %-8s %8s N  D%-2u", level + 1,
+                      levelConfig(level).name, nodes,
+                      static_cast<unsigned>(benchmarkMedianDepth(
+                          first, kFullBenchmarkPositionCount)));
+        drawText(12, 30 + level * 9, line,
+                 level >= 8 ? colors.accent : colors.text, 1);
+    }
+    drawText(132, 118, "MEDIAN / MOVE", colors.muted, 1);
+}
+
+void drawBenchmarkResults() {
+    const ThemePalette& colors = theme();
+    if (benchmarkFailed) {
+        drawCenteredText(48, "BENCHMARK COULD NOT START", colors.check, 1);
+        drawCenteredText(66, "RESTART OR TRY AGAIN", colors.muted, 1);
+    } else if (benchmarkMode == BenchmarkMode::Quick) {
+        drawQuickBenchmarkResults();
+    } else {
+        drawFullBenchmarkResults();
+    }
+    drawText(8, 126, "ESC MODES", colors.secondary, 1);
+    drawText(154, 126, "ENTER AGAIN", colors.text, 1);
+}
+
+void drawBenchmarkContent() {
+    M5Cardputer.Display.fillRect(0, 27, 240, 108, theme().background);
+    if (benchmarkPhase == BenchmarkPhase::Menu) {
+        drawBenchmarkMenu();
+    } else if (benchmarkPhase == BenchmarkPhase::Running) {
+        drawBenchmarkProgress();
+    } else {
+        drawBenchmarkResults();
+    }
+}
+
+void drawBenchmark() {
+    const ThemePalette& colors = theme();
+    M5Cardputer.Display.fillScreen(colors.background);
+    drawText(10, 5, "ENGINE BENCH", colors.accent, 2);
+    drawPiece(214, 4, makePiece(Color::White, PieceType::Rook));
+    M5Cardputer.Display.drawFastHLine(8, 25, 224, colors.accent);
+    drawBenchmarkContent();
 }
 
 constexpr std::array<const char*, 4> kSetupLabels = {
@@ -900,12 +1173,16 @@ void redrawThinkingIndicator() {
     if (!searchRunning) return;
     const bool panelIndicator = screen == Screen::Playing;
     const bool coachIndicator = screen == Screen::Coach && coachSearchRunning();
-    if (!panelIndicator && !coachIndicator) return;
+    const bool benchmarkIndicator =
+        screen == Screen::Benchmark && searchPurpose == SearchPurpose::Benchmark;
+    if (!panelIndicator && !coachIndicator && !benchmarkIndicator) return;
     M5Cardputer.Display.startWrite();
     if (panelIndicator) {
         drawThinkingDots(kPanelX + 82, 54, theme().surfaceStrong);
-    } else {
+    } else if (coachIndicator) {
         drawThinkingDots(147, 55, theme().surfaceStrong);
+    } else {
+        drawThinkingDots(151, 66, theme().background);
     }
     M5Cardputer.Display.endWrite();
 }
@@ -999,6 +1276,10 @@ void redrawAfterAction(const UiSnapshot& before) {
             break;
         }
         case Screen::GameOver: break;
+        case Screen::Benchmark:
+            drawBenchmarkContent();
+            changed = true;
+            break;
     }
     M5Cardputer.Display.endWrite();
     if (changed) finishPartialRedraw();
@@ -1020,6 +1301,7 @@ void redraw() {
         case Screen::Coach: drawCoach(); break;
         case Screen::Pause: drawPause(); break;
         case Screen::GameOver: drawGameOver(); break;
+        case Screen::Benchmark: drawBenchmark(); break;
     }
     M5Cardputer.Display.endWrite();
     drawnScreen = screen;
@@ -1046,6 +1328,7 @@ Action readAction() {
         if (key == '/' || key == 'd') return Action::Right;
         if (key == 'u') return Action::Undo;
         if (key == 'h') return Action::Coach;
+        if (key == 'b') return Action::Benchmark;
     }
     return Action::None;
 }
@@ -1157,6 +1440,28 @@ void engineTask(void*) {
     vTaskDelete(nullptr);
 }
 
+bool launchPreparedSearch(SearchPurpose purpose, const SearchLimits& limits) {
+    if (searchRunning) return false;
+    searchRootKey = searchPosition.key();
+    searchPurpose = purpose;
+    taskLimits = limits;
+    searchDone = false;
+    discardSearch = false;
+    engineLaunchFailed = false;
+    thinkingFrame = 0;
+    lastThinkingFrameMs = millis();
+    searchRunning = true;
+    const BaseType_t created = xTaskCreatePinnedToCore(
+        engineTask, "chess-search", kSearchTaskStackBytes, nullptr, 1,
+        &searchTaskHandle, 0);
+    if (created != pdPASS) {
+        searchRunning = false;
+        engineLaunchFailed = true;
+        return false;
+    }
+    return true;
+}
+
 SearchLimits opponentLimits() {
     const LevelConfig& level = levelConfig(levelIndex);
     SearchLimits limits;
@@ -1185,21 +1490,65 @@ void startSearch(SearchPurpose purpose) {
     if (purpose == SearchPurpose::Opponent && game.sideToMove() == humanColor) return;
     if (purpose == SearchPurpose::Coach && game.sideToMove() != humanColor) return;
     searchPosition = game;
-    searchRootKey = game.key();
-    searchPurpose = purpose;
-    taskLimits = purpose == SearchPurpose::Opponent ? opponentLimits() : coachLimits();
-    searchDone = false;
-    discardSearch = false;
-    engineLaunchFailed = false;
-    thinkingFrame = 0;
-    lastThinkingFrameMs = millis();
-    searchRunning = true;
-    const BaseType_t created = xTaskCreatePinnedToCore(
-        engineTask, "chess-search", kSearchTaskStackBytes, nullptr, 1,
-        &searchTaskHandle, 0);
-    if (created != pdPASS) {
-        searchRunning = false;
+    launchPreparedSearch(
+        purpose, purpose == SearchPurpose::Opponent ? opponentLimits()
+                                                    : coachLimits());
+}
+
+std::size_t benchmarkPositionIndex(std::size_t caseIndex) {
+    if (benchmarkMode == BenchmarkMode::Quick) return caseIndex;
+    return kFullBenchmarkPositionIndices[caseIndex % kFullBenchmarkPositionCount];
+}
+
+SearchLimits benchmarkLimits(std::size_t caseIndex) {
+    SearchLimits limits;
+    if (benchmarkMode == BenchmarkMode::Quick) {
+        limits.moveTimeMs = kQuickBenchmarkMoveTimeMs;
+        limits.maxDepth = 24;
+        limits.errorWindowCp = 0;
+        limits.candidateCount = 1;
+    } else {
+        const int level = static_cast<int>(caseIndex / kFullBenchmarkPositionCount);
+        const LevelConfig& config = levelConfig(level);
+        limits.moveTimeMs = config.moveTimeMs;
+        limits.maxDepth = config.maxDepth;
+        limits.errorWindowCp = config.errorWindowCp;
+        limits.candidateCount = config.candidateCount;
+    }
+    limits.randomSeed = UINT64_C(0x42454E43484D4152) ^ searchPosition.key() ^ caseIndex;
+    limits.useOpeningBook = false;
+    return limits;
+}
+
+bool startBenchmarkCase() {
+    if (benchmarkCaseIndex >= benchmarkCaseCount) return false;
+    const std::size_t positionIndex = benchmarkPositionIndex(benchmarkCaseIndex);
+    if (!searchPosition.loadFen(kBenchmarkPositions[positionIndex].fen)) {
         engineLaunchFailed = true;
+        return false;
+    }
+    engine.clearHash();
+    return launchPreparedSearch(SearchPurpose::Benchmark,
+                                benchmarkLimits(benchmarkCaseIndex));
+}
+
+void startBenchmarkRun(BenchmarkMode mode) {
+    if (searchRunning) return;
+    benchmarkMode = mode;
+    benchmarkPhase = BenchmarkPhase::Running;
+    benchmarkCaseIndex = 0;
+    benchmarkCaseCount = mode == BenchmarkMode::Quick
+                             ? kQuickBenchmarkPositionCount
+                             : kMaxBenchmarkCases;
+    benchmarkNodes.fill(0);
+    benchmarkElapsedMs.fill(0);
+    benchmarkDepth.fill(0);
+    benchmarkCancelRequested = false;
+    benchmarkFailed = false;
+    benchmarkHasResults = false;
+    if (!startBenchmarkCase()) {
+        benchmarkFailed = true;
+        benchmarkPhase = BenchmarkPhase::Results;
     }
 }
 
@@ -1455,6 +1804,12 @@ void confirmPromotion() {
 }
 
 void handleHome(Action action) {
+    if (action == Action::Benchmark) {
+        benchmarkPhase = BenchmarkPhase::Menu;
+        benchmarkMenuRow = 0;
+        screen = Screen::Benchmark;
+        return;
+    }
     const int lastRow = homeActionCount() - 1;
     if (action == Action::Up) homeRow = std::max(0, homeRow - 1);
     if (action == Action::Down) homeRow = std::min(lastRow, homeRow + 1);
@@ -1465,6 +1820,43 @@ void handleHome(Action action) {
     }
     setupRow = 0;
     screen = Screen::Setup;
+}
+
+void handleBenchmark(Action action) {
+    if (benchmarkPhase == BenchmarkPhase::Running) {
+        if (action == Action::Cancel && searchRunning &&
+            searchPurpose == SearchPurpose::Benchmark) {
+            benchmarkCancelRequested = true;
+            engine.requestStop();
+        }
+        return;
+    }
+
+    if (benchmarkPhase == BenchmarkPhase::Results) {
+        if (action == Action::Cancel) {
+            benchmarkPhase = BenchmarkPhase::Menu;
+            benchmarkMenuRow = benchmarkMode == BenchmarkMode::Quick ? 0 : 1;
+        } else if (action == Action::Confirm) {
+            startBenchmarkRun(benchmarkMode);
+        }
+        return;
+    }
+
+    const int lastRow = benchmarkMenuCount() - 1;
+    if (action == Action::Up) benchmarkMenuRow = std::max(0, benchmarkMenuRow - 1);
+    if (action == Action::Down) {
+        benchmarkMenuRow = std::min(lastRow, benchmarkMenuRow + 1);
+    }
+    if (action == Action::Cancel) {
+        screen = Screen::Home;
+    } else if (action == Action::Confirm && benchmarkMenuRow == 0) {
+        startBenchmarkRun(BenchmarkMode::Quick);
+    } else if (action == Action::Confirm && benchmarkMenuRow == 1) {
+        startBenchmarkRun(BenchmarkMode::Full);
+    } else if (action == Action::Confirm && benchmarkMenuRow == 2 &&
+               benchmarkHasResults) {
+        benchmarkPhase = BenchmarkPhase::Results;
+    }
 }
 
 void handleSetup(Action action) {
@@ -1629,6 +2021,47 @@ void consumeSearchResult() {
     searchDone = false;
     portEXIT_CRITICAL(&resultMutex);
 
+    if (completedPurpose == SearchPurpose::Benchmark) {
+        bool refreshBenchmarkScreen = true;
+        if (benchmarkCancelRequested) {
+            benchmarkCancelRequested = false;
+            benchmarkPhase = BenchmarkPhase::Menu;
+            benchmarkMenuRow = benchmarkMode == BenchmarkMode::Quick ? 0 : 1;
+            engine.clearHash();
+        } else if (!result.hasMove || benchmarkCaseIndex >= benchmarkCaseCount) {
+            benchmarkFailed = true;
+            benchmarkPhase = BenchmarkPhase::Results;
+            benchmarkHasResults = false;
+            engine.clearHash();
+        } else {
+            benchmarkNodes[benchmarkCaseIndex] = result.nodes;
+            benchmarkElapsedMs[benchmarkCaseIndex] = result.elapsedMs;
+            benchmarkDepth[benchmarkCaseIndex] = result.completedDepth;
+            ++benchmarkCaseIndex;
+            if (benchmarkCaseIndex >= benchmarkCaseCount) {
+                benchmarkPhase = BenchmarkPhase::Results;
+                benchmarkHasResults = true;
+                engine.clearHash();
+            } else if (!startBenchmarkCase()) {
+                benchmarkFailed = true;
+                benchmarkPhase = BenchmarkPhase::Results;
+                benchmarkHasResults = false;
+                engine.clearHash();
+            } else if (benchmarkMode == BenchmarkMode::Full &&
+                       benchmarkCaseIndex % kFullBenchmarkPositionCount != 0U) {
+                refreshBenchmarkScreen = false;
+            }
+        }
+
+        if (refreshBenchmarkScreen && screen == Screen::Benchmark) {
+            M5Cardputer.Display.startWrite();
+            drawBenchmarkContent();
+            M5Cardputer.Display.endWrite();
+            finishPartialRedraw();
+        }
+        return;
+    }
+
     if (discardSearch) {
         discardSearch = false;
         if (pendingUndo) {
@@ -1693,6 +2126,7 @@ void loop() {
             case Screen::Coach: handleCoach(action); break;
             case Screen::Pause: handlePause(action); break;
             case Screen::GameOver: handleGameOver(action); break;
+            case Screen::Benchmark: handleBenchmark(action); break;
         }
         redrawAfterAction(before);
     }

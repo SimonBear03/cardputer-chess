@@ -7,13 +7,13 @@ contributors who want to verify a change before flashing or publishing it.
 
 | Check | Result |
 | --- | --- |
-| Host rules, engine, and persistence tests | 303 assertions passed |
-| AddressSanitizer and UBSan | 303 assertions passed |
+| Host rules, engine, and persistence tests | 307 assertions passed |
+| AddressSanitizer and UBSan | 307 assertions passed |
 | Host Stockfish calibration | 27 W, 12 D, 25 L at Stockfish-UCI 2350 |
 | Cardputer-Adv firmware build | Passed |
-| Static RAM | 178,180 / 327,680 bytes (54.4%) |
-| Flash image | 558,097 / 3,342,336 bytes (16.7%) |
-| USB upload | Current build passed on `/dev/cu.usbmodem101` |
+| Static RAM | 178,716 / 327,680 bytes (54.5%) |
+| Flash image | 565,389 / 3,342,336 bytes (16.9%) |
+| USB upload | Pending; Cardputer was not detected for this build |
 
 These results support the checked-in code, but they do not replace looking at
 the real LCD and pressing the physical keys.
@@ -26,11 +26,11 @@ Run:
 make test
 ```
 
-Current result: **303 assertions pass**. The suite includes the six standard
+Current result: **307 assertions pass**. The suite includes the six standard
 perft positions, with start position and endgame coverage extended to depth 4.
 It also covers:
 
-- FEN parsing and coordinate conversion
+- FEN parsing, reusable in-place benchmark loading, and coordinate conversion
 - make/unmake and Zobrist-key identity
 - castling, including castling through check
 - en passant, including a pinned pawn and repetition-key semantics
@@ -53,7 +53,7 @@ Run the same suite with memory and undefined-behavior instrumentation:
 make test-sanitize
 ```
 
-Current result: **303 assertions pass under AddressSanitizer and UBSan**.
+Current result: **307 assertions pass under AddressSanitizer and UBSan**.
 LeakSanitizer is disabled because it requires ptrace support that is unavailable
 in some sandboxed runners.
 
@@ -82,15 +82,15 @@ platformio run
 The project pins Espressif32 platform 6.12.0 and the M5Cardputer Git tag 1.2.0.
 The current release build succeeds for the ESP32-S3FN8 target with:
 
-- Static RAM: 178,180 / 327,680 bytes (54.4%)
-- Flash image: 558,097 / 3,342,336 bytes (16.7%)
+- Static RAM: 178,716 / 327,680 bytes (54.5%)
+- Flash image: 565,389 / 3,342,336 bytes (16.9%)
 - Output: `.pio/build/cardputer-adv/firmware.bin`
 
 The 64 KiB transposition table is allocated once at runtime and is therefore
 not included in PlatformIO's static-RAM figure. Search uses a fixed 24 KiB
 FreeRTOS task stack and fixed-capacity working arrays; it does not allocate in
-the recursive search path. Opponent and Coach analysis share the same engine
-and task rather than allocating a second search instance.
+the recursive search path. Opponent, Coach, and on-device benchmark searches
+share the same engine and task rather than allocating a second search instance.
 
 The UI keeps its large reusable `Position` objects in static application
 storage, including the notation copy used by the Coach overlay. This avoids
@@ -100,6 +100,12 @@ coordinates, dirty-region redraws, and the three-dot thinking indicator do not
 require a framebuffer or dynamic allocation. Home and New Match use localized
 action/content redraws, while finite event accents also change only three
 two-pixel dots.
+
+Engine Bench loads each trusted FEN directly into the static search position,
+so it does not place another multi-kilobyte `Position` on the Arduino loop
+stack. Its fixed result arrays add only bounded static storage. Quick and Full
+clear the shared hash between samples and again on completion or cancellation;
+they do not write preferences or saved-game NVS slots.
 
 Saved games use a fixed 1,048-byte scratch buffer plus a compact in-memory move
 record. Two alternating NVS slots, format versioning, and a CRC preserve the
@@ -146,9 +152,9 @@ transient and are not restored. This validates the persistence path and the
 hard-level stability fix in the modeled CPU, flash, NVS, display, and keyboard
 environment. It is not a physical-device thermal, power, or task-watchdog test.
 
-## Physical-device smoke check
+## Previous physical-device smoke check
 
-The current firmware was uploaded successfully to a Cardputer-Adv detected as
+The previous firmware baseline was uploaded successfully to a Cardputer-Adv detected as
 an ESP32-S3 revision v0.2 over its USB-Serial/JTAG interface at
 `/dev/cu.usbmodem101`. Bootloader, partition table, and application hashes all
 verified, and the upload completed with a hard reset. The flashed build includes
@@ -165,3 +171,10 @@ small text, the settings-list hierarchy and options strip, piece and square
 legibility, physical keys, repeated Coach use, sustained Maximum-level searches,
 battery draw, and temperature still need the checks in
 [hardware-test-checklist.md](hardware-test-checklist.md).
+
+The Engine Bench build has not yet received that physical smoke check. During
+its validation pass, `platformio device list` showed only the Mac debug console,
+Bluetooth port, and headphones; `/dev/cu.usbmodem101` was absent. The firmware
+build and host checks pass, but its `B` shortcut, LCD layout, Quick result, Full
+result, cancellation, and saved-game preservation remain pending on the real
+Cardputer.

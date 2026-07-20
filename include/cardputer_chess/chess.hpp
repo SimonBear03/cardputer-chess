@@ -121,6 +121,7 @@ class Position {
     void resetToStartPosition();
     static std::optional<Position> fromFen(std::string_view fen,
                                            std::string* error = nullptr);
+    bool loadFen(std::string_view fen, std::string* error = nullptr);
 
     std::string toFen() const;
     Piece pieceAt(int square) const;

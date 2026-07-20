@@ -55,6 +55,9 @@ Record the firmware commit and any failures when testing a release.
 - Open and close the game menu with Tab.
 - Open Coach with `H`, browse candidates with Left/Right, close it with `H` and
   Esc, and use Enter to focus a suggested move on the board.
+- From Home, press `B` and confirm the Engine Bench menu opens. Run Quick Speed,
+  verify its progress dots remain localized, and confirm the final screen shows
+  median nodes/second, range, nodes, and depth. Return through Modes to Home.
 
 ## 3. Board interaction
 
@@ -102,6 +105,9 @@ Record the firmware commit and any failures when testing a release.
 - Finish one checkmate and one stalemate; verify the result overlay and new-game
   path.
 - Verify undo works from the game-over screen.
+- Run Full Levels. Confirm all ten level rows appear without clipped text, the
+  test can be cancelled cleanly with Esc, and Continue still restores the same
+  saved game afterward. Capture a straight-on photo of the completed report.
 
 ## 5. Stability
 

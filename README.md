@@ -41,6 +41,7 @@ accepts those four keys without `Fn`, plus `W/A/S/D`.
 | Tab | Open or close the in-game menu |
 | `U` | Undo the last human turn |
 | `H` | Open Coach or request analysis |
+| `B` from Home | Open the on-device engine benchmark |
 
 ## Themes and display
 
@@ -78,6 +79,24 @@ scored 51.6% against Stockfish 18 set to `UCI_Elo=2350`, for a rough estimate of
 engine-development baseline; it is not a FIDE rating or yet a measurement of
 the Cardputer's physical search speed. See
 [benchmarking.md](docs/benchmarking.md) for the full setup and uncertainty.
+
+## Benchmark the real Cardputer
+
+Press `B` from Home to measure the engine on the physical ESP32-S3. Benchmark
+searches use the same background task and 64 KiB hash as the game, disable the
+opening book, and never replace or write the saved match.
+
+- **Quick Speed** searches six varied positions for one second each at the
+  strongest deterministic settings. Its result shows median nodes per second,
+  the observed range, median nodes, and completed depth.
+- **Full Levels** searches four representative positions with the exact time,
+  depth, and move-selection settings of every difficulty. Its result shows the
+  median nodes per move and depth for all ten levels.
+
+Quick takes about six seconds; Full takes roughly 90 seconds. The most recent
+report remains available as **Last Result** until the device restarts or another
+benchmark begins. Send a photo of the result screen to use its node budget in a
+device-strength estimate.
 
 ## Reading chess moves
 

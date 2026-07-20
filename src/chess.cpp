@@ -132,9 +132,16 @@ void Position::resetToStartPosition() {
 }
 
 std::optional<Position> Position::fromFen(std::string_view fen, std::string* error) {
-    auto fail = [&](const char* message) -> std::optional<Position> {
+    Position result;
+    if (!result.loadFen(fen, error)) return std::nullopt;
+    return result;
+}
+
+bool Position::loadFen(std::string_view fen, std::string* error) {
+    auto fail = [&](const char* message) {
         if (error != nullptr) *error = message;
-        return std::nullopt;
+        resetToStartPosition();
+        return false;
     };
 
     std::array<std::string_view, 6> fields{};
@@ -152,8 +159,7 @@ std::optional<Position> Position::fromFen(std::string_view fen, std::string* err
     }
     if (fieldCount != 6) return fail("FEN must contain six fields");
 
-    Position result;
-    result.clear();
+    clear();
     int rank = 7;
     int file = 0;
     int whiteKings = 0;
@@ -173,9 +179,9 @@ std::optional<Position> Position::fromFen(std::string_view fen, std::string* err
         const Piece piece = fenToPiece(value);
         if (piece == 0 || file >= 8 || rank < 0) return fail("invalid FEN piece field");
         const int square = rank * 8 + file;
-        result.board_[static_cast<std::size_t>(square)] = piece;
+        board_[static_cast<std::size_t>(square)] = piece;
         if (pieceType(piece) == PieceType::King) {
-            result.kingSquares_[static_cast<std::size_t>(colorIndex(pieceColor(piece)))] =
+            kingSquares_[static_cast<std::size_t>(colorIndex(pieceColor(piece)))] =
                 static_cast<std::uint8_t>(square);
             if (pieceColor(piece) == Color::White) {
                 ++whiteKings;
@@ -189,46 +195,46 @@ std::optional<Position> Position::fromFen(std::string_view fen, std::string* err
     if (whiteKings != 1 || blackKings != 1) return fail("FEN must contain one king per side");
 
     if (fields[1] == "w") {
-        result.sideToMove_ = Color::White;
+        sideToMove_ = Color::White;
     } else if (fields[1] == "b") {
-        result.sideToMove_ = Color::Black;
+        sideToMove_ = Color::Black;
     } else {
         return fail("invalid FEN active color");
     }
 
-    result.castlingRights_ = 0;
+    castlingRights_ = 0;
     if (fields[2] != "-") {
         for (char value : fields[2]) {
             switch (value) {
-                case 'K': result.castlingRights_ |= WhiteKingSide; break;
-                case 'Q': result.castlingRights_ |= WhiteQueenSide; break;
-                case 'k': result.castlingRights_ |= BlackKingSide; break;
-                case 'q': result.castlingRights_ |= BlackQueenSide; break;
+                case 'K': castlingRights_ |= WhiteKingSide; break;
+                case 'Q': castlingRights_ |= WhiteQueenSide; break;
+                case 'k': castlingRights_ |= BlackKingSide; break;
+                case 'q': castlingRights_ |= BlackQueenSide; break;
                 default: return fail("invalid FEN castling rights");
             }
         }
     }
 
     if (fields[3] == "-") {
-        result.enPassantSquare_ = -1;
+        enPassantSquare_ = -1;
     } else {
         const int square = parseSquare(fields[3]);
         if (square < 0 || (rankOf(square) != 2 && rankOf(square) != 5)) {
             return fail("invalid FEN en-passant square");
         }
-        result.enPassantSquare_ = static_cast<std::int8_t>(square);
+        enPassantSquare_ = static_cast<std::int8_t>(square);
     }
 
-    if (!parseUnsigned(fields[4], result.halfmoveClock_)) {
+    if (!parseUnsigned(fields[4], halfmoveClock_)) {
         return fail("invalid FEN halfmove clock");
     }
-    if (!parseUnsigned(fields[5], result.fullmoveNumber_) || result.fullmoveNumber_ == 0) {
+    if (!parseUnsigned(fields[5], fullmoveNumber_) || fullmoveNumber_ == 0) {
         return fail("invalid FEN fullmove number");
     }
 
-    result.computeKey();
-    result.pushRepetitionKey();
-    return result;
+    computeKey();
+    pushRepetitionKey();
+    return true;
 }
 
 std::string Position::toFen() const {
