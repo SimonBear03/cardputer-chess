@@ -52,6 +52,59 @@ same portable engine code. Position-dependent speed, transposition-table
 history during a real game, and the statistical uncertainty of the match still
 need to be stated with the result.
 
+### First physical result
+
+The first Cardputer-Adv run of firmware revision `6c4b5f9` produced:
+
+| Quick Speed measurement | Result |
+| --- | ---: |
+| Median speed | 9.5K nodes/second |
+| Observed range | 4.5K–16.8K nodes/second |
+| Median one-second search | 9.7K nodes, depth 5 |
+
+Full Levels reported the following cold-hash median per move across four
+positions. These values include each level's real time and depth limits; lower
+levels also retain their configured error window and candidate count.
+
+| Level | Median nodes/move | Median depth |
+| --- | ---: | ---: |
+| 1 Beginner | 593 | 1 |
+| 2 Easy | 763 | 2 |
+| 3 Casual | 1.5K | 2 |
+| 4 Club | 3.5K | 3 |
+| 5 Skilled | 6.6K | 4 |
+| 6 Strong | 8.7K | 4 |
+| 7 Advanced | 13.8K | 4 |
+| 8 Expert | 18.9K | 4 |
+| 9 Master | 37.8K | 6 |
+| 10 Maximum | 93.6K | 6 |
+
+Maximum's 93.6K nodes over its ten-second limit implies about 9.36K
+nodes/second, closely reproducing Quick Speed's 9.5K median. That independent
+agreement is useful evidence that the on-device measurement is internally
+consistent.
+
+The Maximum node-equivalent calibration then replayed 93,600 nodes per
+Cardputer move against Stockfish 18 at `UCI_Elo=2350` and 100 ms per Stockfish
+move. The remaining conditions matched the host calibration: 32 openings with
+colors reversed, one Stockfish thread, 64 MiB Stockfish hash, 64 KiB Cardputer
+hash, no Cardputer opening book, and a 240-ply cap.
+
+| Device-equivalent Maximum result | Value |
+| --- | ---: |
+| Wins / draws / losses | 31 / 14 / 19 |
+| Score | **38/64 (59.4%)** |
+| Capped draws | 1 |
+| Estimated rating | **2416 Stockfish-UCI Elo** |
+| Approximate 95% interval | **2330–2502** |
+
+The appropriate headline is **roughly 2400 Elo for 10 Maximum under this
+node-equivalent test**. It does not mean a 2400 FIDE rating, and it is not a
+direct USB match against Stockfish. The earlier 2361 host-time estimate falls
+inside this result's interval; the difference between their point estimates is
+ordinary match uncertainty, not evidence that the ESP32 is stronger than the
+Mac.
+
 `bench/positions.tsv` also stores Stockfish's top three moves at 500,000 nodes,
 scored as 3/2/1 points. Refresh those annotations with:
 

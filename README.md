@@ -98,6 +98,13 @@ report remains available as **Last Result** until the device restarts or another
 benchmark begins. Send a photo of the result screen to use its node budget in a
 device-strength estimate.
 
+The first physical Cardputer-Adv run measured **9.5K nodes/second** and a
+**93.6K-node median at 10 Maximum**. Replaying that exact node budget over 64
+paired games produced a rough Maximum estimate of **about 2400 Stockfish-UCI
+Elo**. This remains an automated development rating rather than a FIDE rating;
+the complete result and uncertainty are in
+[benchmarking.md](docs/benchmarking.md).
+
 ## Reading chess moves
 
 The move history and Coach use Standard Algebraic Notation:

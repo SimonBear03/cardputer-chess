@@ -10,6 +10,8 @@ contributors who want to verify a change before flashing or publishing it.
 | Host rules, engine, and persistence tests | 307 assertions passed |
 | AddressSanitizer and UBSan | 307 assertions passed |
 | Host Stockfish calibration | 27 W, 12 D, 25 L at Stockfish-UCI 2350 |
+| Physical Quick Speed | 9.5K nodes/second median |
+| Device-equivalent Maximum | 31 W, 14 D, 19 L at Stockfish-UCI 2350 |
 | Cardputer-Adv firmware build | Passed |
 | Static RAM | 178,716 / 327,680 bytes (54.5%) |
 | Flash image | 565,389 / 3,342,336 bytes (16.9%) |
@@ -70,6 +72,22 @@ That corresponds to an estimated **2361 Stockfish-UCI Elo**, with an approximate
 counted as draws. This is a reproducible Apple Silicon Mac benchmark, not a FIDE
 rating or a physical-Cardputer rating. Exact commands, methodology, and caveats
 are recorded in [benchmarking.md](benchmarking.md).
+
+## Physical engine measurement
+
+Quick Speed completed on the flashed Cardputer-Adv with a median of 9.5K
+nodes/second, a 4.5K–16.8K range, 9.7K median nodes, and median depth 5. Full
+Levels completed all forty searches and reported a 93.6K-node, depth-6 median
+for 10 Maximum. Dividing that budget by Maximum's ten-second limit gives 9.36K
+nodes/second, closely agreeing with the independent Quick result.
+
+Replaying Maximum's 93,600-node budget in the host match harness scored 31
+wins, 14 draws, and 19 losses against Stockfish 18 at `UCI_Elo=2350`: **38/64,
+or 59.4%**. The converted estimate is **2416 Stockfish-UCI Elo**, with an
+approximate 95% interval of **2330–2502**. One game reached the 240-ply cap.
+This validates the measurement-to-host workflow, but it remains a
+node-equivalent estimate rather than direct physical-device play or a FIDE
+rating.
 
 ## Firmware build
 
