@@ -164,6 +164,10 @@ assets, and visible copy are coherent at the target viewport.
   palette and the shared generated piece assets.
 - Board navigation redraws only dirty 15-pixel squares, and menu navigation
   redraws only dirty rows; there is no timed full-screen repaint loop.
+- Engine and Coach thinking use a 300 ms three-dot animation that redraws only
+  the three small status dots per frame. Completed analysis exposes the best
+  move in a bounded `NEXT <SAN>` panel line, and all variable panel copy is
+  capped at 16 characters.
 - Theme selection uses one complete redraw rather than an overlay animation,
   preventing residual scanline fragments in partially repainted menu gaps.
 - The primary interaction paths compile in the final firmware build; no build

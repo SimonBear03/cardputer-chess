@@ -11,7 +11,7 @@ contributors who want to verify a change before flashing or publishing it.
 | AddressSanitizer and UBSan | 286 assertions passed |
 | Cardputer-Adv firmware build | Passed |
 | Static RAM | 178,156 / 327,680 bytes (54.4%) |
-| Flash image | 555,557 / 3,342,336 bytes (16.6%) |
+| Flash image | 556,285 / 3,342,336 bytes (16.6%) |
 | USB upload | Current build passed on `/dev/cu.usbmodem101` |
 
 These results support the checked-in code, but they do not replace looking at
@@ -67,7 +67,7 @@ The project pins Espressif32 platform 6.12.0 and the M5Cardputer Git tag 1.2.0.
 The current release build succeeds for the ESP32-S3FN8 target with:
 
 - Static RAM: 178,156 / 327,680 bytes (54.4%)
-- Flash image: 555,557 / 3,342,336 bytes (16.6%)
+- Flash image: 556,285 / 3,342,336 bytes (16.6%)
 - Output: `.pio/build/cardputer-adv/firmware.bin`
 
 The 64 KiB transposition table is allocated once at runtime and is therefore
@@ -80,8 +80,8 @@ The UI keeps its large reusable `Position` objects in static application
 storage, including the notation copy used by the Coach overlay. This avoids
 overflowing the Arduino loop task while formatting a continuation line. All
 three themes share the same 14×14 two-color piece masks. Theme selection, board
-coordinates, and dirty-region redraws do not require a framebuffer or dynamic
-allocation.
+coordinates, dirty-region redraws, and the three-dot thinking indicator do not
+require a framebuffer or dynamic allocation.
 
 Saved games use a fixed 1,048-byte scratch buffer plus a compact in-memory move
 record. Two alternating NVS slots, format versioning, and a CRC preserve the
@@ -125,15 +125,16 @@ environment. It is not a physical-device thermal, power, or task-watchdog test.
 
 ## Physical-device smoke check
 
-The previous firmware baseline was uploaded successfully to a Cardputer-Adv detected as an
-ESP32-S3 revision v0.2 over its USB-Serial/JTAG interface. Bootloader, partition
-table, and application hashes all verified, and the upload completed with a
-hard reset. A short 115200-baud monitor window showed no panic or repeated boot
-output.
+The current firmware was uploaded successfully to a Cardputer-Adv detected as
+an ESP32-S3 revision v0.2 over its USB-Serial/JTAG interface at
+`/dev/cu.usbmodem101`. Bootloader, partition table, and application hashes all
+verified, and the upload completed with a hard reset. The flashed build includes
+saved-game recovery, the hard-search watchdog fix, dirty-region rendering, the
+localized thinking indicator, bounded panel text, and visible Coach suggestions.
 
-The current saved-game and watchdog build has compiled successfully but has not
-yet been flashed. Automatic resume after a hard power cycle and repeated
-ten-second Maximum searches therefore remain required device checks.
+Automatic resume after a hard power cycle and repeated ten-second Maximum
+searches remain required operator checks; a successful upload alone does not
+claim those behaviors on physical hardware.
 
 That smoke check does not replace the operator walkthrough. Exact LCD colors,
 small text, piece and square legibility, physical keys, repeated Coach use,

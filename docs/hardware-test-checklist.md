@@ -67,7 +67,8 @@ Record the firmware commit and any failures when testing a release.
 - Start as White and as Black; when playing Black, confirm the engine makes the
   opening move without blocking keyboard/UI updates.
 - Try Beginner, Club, Expert, and Maximum. Confirm the UI remains responsive
-  while `Thinking...` is shown and the engine eventually makes a legal move.
+  while the three `ENGINE THINK` dots animate and the engine eventually makes a
+  legal move. Confirm the board itself remains visually still between moves.
 - Play at least ten non-book engine turns on Maximum and confirm no task-watchdog
   reset, reboot, or repeated screen flashing occurs during the ten-second budget.
 - During a search, press Tab and confirm the engine stops cleanly before the menu
@@ -80,8 +81,9 @@ Record the firmware commit and any failures when testing a release.
 - Repeatedly open, browse, close, and reopen Coach; confirm PV formatting never
   resets or reboots the device.
 - In Always mode, confirm Coach analysis begins on each human turn without
-  blocking cursor movement; play immediately and confirm the opponent search
-  starts cleanly after Coach cancellation.
+  blocking cursor movement. When it completes, confirm `NEXT <move>` appears in
+  the side panel and `H` opens all three lines. Play immediately and confirm the
+  opponent search starts cleanly after Coach cancellation.
 - Play the first, second, third, and an unlisted move in separate runs; confirm
   the quality feedback is sensible and an unlisted move says `Outside top 3`.
 - Finish one checkmate and one stalemate; verify the result overlay and new-game
@@ -98,6 +100,8 @@ Record the firmware commit and any failures when testing a release.
 - Hold or repeatedly tap board and menu navigation keys; confirm only the
   changed squares or rows update and the rest of the frame stays visually still.
 - Confirm theme changes redraw cleanly without scanlines or residual pixels.
+- Confirm no status, SAN, Coach-feedback, history, or engine-stat text crosses
+  the side-panel edge.
 - Confirm move, check, and win/loss/draw feedback remains clear without a
   repeated pulse or redraw loop.
 - Check that the case remains comfortable to hold during repeated ten-second

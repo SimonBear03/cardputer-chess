@@ -25,6 +25,8 @@ constexpr int kBoardY = 1;
 constexpr int kSquarePixels = 15;
 constexpr int kPanelX = 133;
 constexpr int kPanelWidth = 107;
+constexpr int kPanelTextChars = (kPanelWidth - 8) / 6;
+constexpr std::uint32_t kThinkingFrameMs = 300;
 constexpr std::uint32_t kSearchTaskStackBytes = 24576;
 
 constexpr std::uint16_t rgb565(std::uint8_t red, std::uint8_t green,
@@ -162,6 +164,8 @@ bool engineLaunchFailed = false;
 bool gameSaveFailed = false;
 std::uint64_t gameSeed = 0;
 std::uint64_t searchRootKey = 0;
+std::uint32_t lastThinkingFrameMs = 0;
+std::uint8_t thinkingFrame = 0;
 Screen drawnScreen = Screen::Setup;
 bool hasDrawnScreen = false;
 SavedGame savedGameScratch{};
@@ -260,6 +264,12 @@ void drawText(int x, int y, const char* value, std::uint16_t color = TFT_WHITE,
     M5Cardputer.Display.setTextColor(color);
     M5Cardputer.Display.setCursor(x, y);
     M5Cardputer.Display.print(value);
+}
+
+void drawPanelText(int y, const char* value, std::uint16_t color) {
+    char clipped[kPanelTextChars + 1]{};
+    std::snprintf(clipped, sizeof(clipped), "%.*s", kPanelTextChars, value);
+    drawText(kPanelX + 4, y, clipped, color, 1);
 }
 
 int squareToColumn(int square) {
@@ -395,6 +405,23 @@ void drawBoard() {
     }
 }
 
+void drawThinkingDots(int x, int y, std::uint16_t backgroundColor) {
+    const ThemePalette& colors = theme();
+    for (int index = 0; index < 3; ++index) {
+        const std::uint16_t color = index == thinkingFrame
+                                        ? colors.secondary
+                                        : backgroundColor;
+        M5Cardputer.Display.fillCircle(x + index * 7, y, 2, color);
+    }
+}
+
+void drawPanelThinkingStatus() {
+    const ThemePalette& colors = theme();
+    const char* label = opponentSearchRunning() ? "ENGINE THINK" : "COACH THINK";
+    drawPanelText(50, label, colors.secondary);
+    drawThinkingDots(kPanelX + 82, 54, colors.surfaceStrong);
+}
+
 void drawPanel() {
     const ThemePalette& colors = theme();
     M5Cardputer.Display.fillRect(kPanelX, 0, kPanelWidth, 135, colors.background);
@@ -408,43 +435,51 @@ void drawPanel() {
     drawText(kPanelX + 8, 21, line, colors.text, 1);
     std::snprintf(line, sizeof(line), "LV%d  %s", levelIndex + 1,
                   levelConfig(levelIndex).name);
-    drawText(kPanelX + 4, 38, line, colors.accent, 1);
+    drawPanelText(38, line, colors.accent);
 
     if (gameSaveFailed) {
-        drawText(kPanelX + 4, 50, "SAVE ERROR", colors.check, 1);
+        drawPanelText(50, "SAVE ERROR", colors.check);
     } else if (opponentSearchRunning()) {
-        drawText(kPanelX + 4, 50, "ENGINE THINKING", colors.secondary, 1);
+        drawPanelThinkingStatus();
     } else if (coachSearchRunning()) {
-        drawText(kPanelX + 4, 50, "COACH THINKING", colors.secondary, 1);
+        drawPanelThinkingStatus();
     } else if (engineLaunchFailed) {
-        drawText(kPanelX + 4, 50, "ENGINE ERROR", colors.check, 1);
+        drawPanelText(50, "ENGINE ERROR", colors.check);
     } else if (outcome != GameState::Ongoing) {
-        drawText(kPanelX + 4, 50, outcomeName(outcome), colors.check, 1);
+        drawPanelText(50, outcomeName(outcome), colors.check);
     } else if (game.inCheck(game.sideToMove())) {
-        drawText(kPanelX + 4, 50, "CHECK", colors.check, 1);
+        drawPanelText(50, "CHECK", colors.check);
     } else {
-        drawText(kPanelX + 4, 50, "READY", colors.legal, 1);
+        drawPanelText(50, "READY", colors.legal);
     }
 
     if (hasLastMove) {
-        std::snprintf(line, sizeof(line), "LAST  %s", records[recordCount - 1U].san.data());
-        drawText(kPanelX + 4, 63, line, colors.text, 1);
+        std::snprintf(line, sizeof(line), "LAST %s", records[recordCount - 1U].san.data());
+        drawPanelText(63, line, colors.text);
     }
-    if (coachFeedback.quality != MoveQuality::Unavailable) {
-        std::snprintf(line, sizeof(line), "COACH %s",
-                      moveQualityName(coachFeedback.quality));
+    if (coachAnalysisCurrent()) {
+        const std::string nextMove = game.moveToSan(coachAnalysis.lines[0].bestMove);
+        std::snprintf(line, sizeof(line), "NEXT %.11s", nextMove.c_str());
+        drawPanelText(74, line, colors.legal);
+    } else if (coachFeedback.quality != MoveQuality::Unavailable) {
         const bool warning = coachFeedback.quality == MoveQuality::Inaccuracy ||
                              coachFeedback.quality == MoveQuality::OutsideTopThree;
-        drawText(kPanelX + 4, 74, line, warning ? colors.check : colors.legal, 1);
+        if (coachFeedback.quality == MoveQuality::OutsideTopThree) {
+            std::snprintf(line, sizeof(line), "NOT IN TOP 3");
+        } else {
+            std::snprintf(line, sizeof(line), "COACH %s",
+                          moveQualityName(coachFeedback.quality));
+        }
+        drawPanelText(74, line, warning ? colors.check : colors.legal);
     } else if (lastSearch.hasMove && !lastSearch.fromBook) {
-        std::snprintf(line, sizeof(line), "D%u  %lluK NODES", lastSearch.completedDepth,
+        std::snprintf(line, sizeof(line), "D%u  %lluK", lastSearch.completedDepth,
                       static_cast<unsigned long long>(lastSearch.nodes / 1000U));
-        drawText(kPanelX + 4, 74, line, colors.muted, 1);
+        drawPanelText(74, line, colors.muted);
     } else if (lastSearch.fromBook) {
-        drawText(kPanelX + 4, 74, "OPENING BOOK", colors.muted, 1);
+        drawPanelText(74, "OPENING BOOK", colors.muted);
     } else {
         std::snprintf(line, sizeof(line), "COACH %s", coachModeName(coachMode));
-        drawText(kPanelX + 4, 74, line, colors.muted, 1);
+        drawPanelText(74, line, colors.muted);
     }
 
     M5Cardputer.Display.drawFastHLine(kPanelX + 4, 85, kPanelWidth - 8, colors.surfaceStrong);
@@ -453,7 +488,7 @@ void drawPanel() {
     for (int index = first; index < static_cast<int>(recordCount); ++index) {
         const auto& record = records[static_cast<std::size_t>(index)];
         std::snprintf(line, sizeof(line), "%d. %s", index + 1, record.san.data());
-        drawText(kPanelX + 4, historyY, line, colors.muted, 1);
+        drawPanelText(historyY, line, colors.muted);
         historyY += 9;
     }
     M5Cardputer.Display.drawFastHLine(kPanelX + 4, 116, kPanelWidth - 8, colors.surfaceStrong);
@@ -590,7 +625,8 @@ void drawCoach() {
     M5Cardputer.Display.drawFastHLine(24, 38, 192, colors.surfaceStrong);
 
     if (coachSearchRunning()) {
-        drawText(26, 51, "ANALYZING TOP THREE...", colors.text, 1);
+        drawText(26, 51, "ANALYZING TOP THREE", colors.text, 1);
+        drawThinkingDots(147, 55, colors.surfaceStrong);
         drawText(26, 68, "You can close and keep playing", colors.muted, 1);
         drawText(26, 108, "H / ESC  CLOSE", colors.secondary, 1);
         return;
@@ -689,6 +725,20 @@ void redrawPanelOnly() {
     drawPanel();
     M5Cardputer.Display.endWrite();
     finishPartialRedraw();
+}
+
+void redrawThinkingIndicator() {
+    if (!searchRunning) return;
+    const bool panelIndicator = screen == Screen::Playing;
+    const bool coachIndicator = screen == Screen::Coach && coachSearchRunning();
+    if (!panelIndicator && !coachIndicator) return;
+    M5Cardputer.Display.startWrite();
+    if (panelIndicator) {
+        drawThinkingDots(kPanelX + 82, 54, theme().surfaceStrong);
+    } else {
+        drawThinkingDots(147, 55, theme().surfaceStrong);
+    }
+    M5Cardputer.Display.endWrite();
 }
 
 void redrawAfterAction(const UiSnapshot& before) {
@@ -947,6 +997,8 @@ void startSearch(SearchPurpose purpose) {
     searchDone = false;
     discardSearch = false;
     engineLaunchFailed = false;
+    thinkingFrame = 0;
+    lastThinkingFrameMs = millis();
     searchRunning = true;
     const BaseType_t created = xTaskCreatePinnedToCore(
         engineTask, "chess-search", kSearchTaskStackBytes, nullptr, 1,
@@ -1415,6 +1467,15 @@ void loop() {
             case Screen::GameOver: handleGameOver(action); break;
         }
         redrawAfterAction(before);
+    }
+
+    if (searchRunning) {
+        const std::uint32_t now = millis();
+        if (now - lastThinkingFrameMs >= kThinkingFrameMs) {
+            lastThinkingFrameMs = now;
+            thinkingFrame = static_cast<std::uint8_t>((thinkingFrame + 1U) % 3U);
+            redrawThinkingIndicator();
+        }
     }
 
     delay(8);

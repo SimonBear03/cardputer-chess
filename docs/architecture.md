@@ -92,11 +92,18 @@ shown immediately. Engine and Coach searches, open overlays, and selections are
 intentionally transient. Returning to setup through New Game clears both slots.
 
 `startWrite()` keeps a display-bus transaction open but does not make a group of
-LCD commands appear atomically. The UI therefore never runs a timed repaint
-loop. Cursor movement redraws two 15-pixel squares, selection redraws only the
-changed selection and legal-destination squares, and setup, pause, promotion,
-and Coach navigation redraw only the affected rows or detail region. A completed
-Coach search updates just the side panel when the board did not change.
+LCD commands appear atomically. The UI therefore never runs a timed full-screen
+repaint loop. Cursor movement redraws two 15-pixel squares, selection redraws
+only the changed selection and legal-destination squares, and setup, pause,
+promotion, and Coach navigation redraw only the affected rows or detail region.
+A completed Coach search updates just the side panel and exposes its best move
+as `NEXT <SAN>` when the board did not change. Variable panel copy is capped at
+the inner panel's 16-character width.
+
+The sole timed animation communicates active Engine or Coach work. Every 300 ms
+it recolors only three two-pixel status dots in the side panel, or in the open
+Coach overlay. It does not clear a text row, redraw the board, or allocate a
+sprite.
 
 Transitions among board-backed screens repaint over the current frame without a
 blanking clear. Theme changes and structurally different screens still repaint

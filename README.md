@@ -49,7 +49,10 @@ the king uses a solid same-color cross. Theme choice is saved between restarts.
 
 The game highlights the selected piece, legal destinations, the previous move,
 and a king in check. Cursor movement and menu navigation repaint only the
-squares or rows that changed; screen and theme changes repaint once.
+squares or rows that changed; screen and theme changes repaint once. Engine and
+Coach searches animate three tiny status dots without repainting the board. When
+Coach analysis is ready, the best move appears as `NEXT <move>` in the side
+panel; press `H` to inspect all three suggestions.
 
 ## Reading chess moves
 
@@ -75,7 +78,7 @@ See [the beginner notation guide](docs/chess-notation.md) for examples such as
 - Automatic power-safe resume from the last completed move
 - Responsive background search, so menus and the board remain usable while the
   engine thinks
-- Static, high-contrast feedback for moves, checks, and game results
+- Localized thinking animation plus high-contrast move, check, and result feedback
 - Host-side rule, perft, search, and memory-safety tests
 
 ## Build and flash
