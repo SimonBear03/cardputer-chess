@@ -85,7 +85,7 @@ Record the firmware commit and any failures when testing a release.
   the side panel and `H` opens all three lines. Play immediately and confirm the
   opponent search starts cleanly after Coach cancellation.
 - Play the first, second, third, and an unlisted move in separate runs; confirm
-  the quality feedback is sensible and an unlisted move says `Outside top 3`.
+  the quality feedback is sensible and an unlisted move says `NOT IN TOP 3`.
 - Finish one checkmate and one stalemate; verify the result overlay and new-game
   path.
 - Verify undo works from the game-over screen.
