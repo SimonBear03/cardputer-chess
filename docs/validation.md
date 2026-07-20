@@ -13,7 +13,7 @@ contributors who want to verify a change before flashing or publishing it.
 | Cardputer-Adv firmware build | Passed |
 | Static RAM | 178,716 / 327,680 bytes (54.5%) |
 | Flash image | 565,389 / 3,342,336 bytes (16.9%) |
-| USB upload | Pending; Cardputer was not detected for this build |
+| USB upload | Passed on `/dev/cu.usbmodem101` |
 
 These results support the checked-in code, but they do not replace looking at
 the real LCD and pressing the physical keys.
@@ -152,15 +152,16 @@ transient and are not restored. This validates the persistence path and the
 hard-level stability fix in the modeled CPU, flash, NVS, display, and keyboard
 environment. It is not a physical-device thermal, power, or task-watchdog test.
 
-## Previous physical-device smoke check
+## Physical-device upload check
 
-The previous firmware baseline was uploaded successfully to a Cardputer-Adv detected as
-an ESP32-S3 revision v0.2 over its USB-Serial/JTAG interface at
+The Engine Bench firmware was uploaded successfully to a Cardputer-Adv detected
+as an ESP32-S3 revision v0.2 over its USB-Serial/JTAG interface at
 `/dev/cu.usbmodem101`. Bootloader, partition table, and application hashes all
 verified, and the upload completed with a hard reset. The flashed build includes
 the Home/Continue flow, save-preserving New Match settings list, ten-level
 preference migration, dirty-region rendering, localized event and thinking
-indicators, bounded panel text, and visible Coach suggestions.
+indicators, bounded panel text, visible Coach suggestions, and Quick/Full
+on-device engine benchmarks.
 
 Continue after a hard power cycle and repeated ten-second Maximum searches
 remain required operator checks; a successful upload alone does not claim those
@@ -170,11 +171,7 @@ That smoke check does not replace the operator walkthrough. Exact LCD colors,
 small text, the settings-list hierarchy and options strip, piece and square
 legibility, physical keys, repeated Coach use, sustained Maximum-level searches,
 battery draw, and temperature still need the checks in
-[hardware-test-checklist.md](hardware-test-checklist.md).
-
-The Engine Bench build has not yet received that physical smoke check. During
-its validation pass, `platformio device list` showed only the Mac debug console,
-Bluetooth port, and headphones; `/dev/cu.usbmodem101` was absent. The firmware
-build and host checks pass, but its `B` shortcut, LCD layout, Quick result, Full
-result, cancellation, and saved-game preservation remain pending on the real
-Cardputer.
+[hardware-test-checklist.md](hardware-test-checklist.md). In particular, the
+uploader cannot verify the `B` shortcut, Benchmark LCD layout, Quick result,
+Full result, cancellation, or saved-game preservation; those remain operator
+checks on the physical screen.
