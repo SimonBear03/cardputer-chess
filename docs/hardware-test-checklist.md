@@ -95,9 +95,11 @@ Record the firmware commit and any failures when testing a release.
   or persistent display artifacts.
 - Navigate continuously between setup, game, Coach, promotion, and pause screens;
   confirm there is no periodic full-screen flicker or blank flash.
+- Hold or repeatedly tap board and menu navigation keys; confirm only the
+  changed squares or rows update and the rest of the frame stays visually still.
 - Confirm theme changes redraw cleanly without scanlines or residual pixels.
-- Confirm the game-intro scan, move/check pulse, and win/loss/draw
-  celebration are brief, smooth, and do not block keyboard input.
+- Confirm move, check, and win/loss/draw feedback remains clear without a
+  repeated pulse or redraw loop.
 - Check that the case remains comfortable to hold during repeated ten-second
   searches.
 - Run once on battery and confirm expected brightness and acceptable battery

@@ -88,19 +88,23 @@ The application saves the current move history, human side, random seed, and a
 monotonic generation to two alternating ESP32 NVS slots. Each completed move or
 undo writes the inactive slot, so an interrupted write leaves the previous slot
 available. On boot the newest versioned record with a valid CRC is replayed and
-shown immediately. Engine and Coach searches, open overlays, selections, and
-animations are intentionally transient. Returning to setup through New Game
-clears both slots.
+shown immediately. Engine and Coach searches, open overlays, and selections are
+intentionally transient. Returning to setup through New Game clears both slots.
 
-The LCD is cleared only when changing screens or themes. Steady-state updates
-redraw the relevant board/menu state inside one display write transaction,
-avoiding the visible flash caused by repeatedly clearing the physical panel.
-Short intro, move/check, and result animations use a non-blocking
-`millis()` state machine and redraw at roughly 24 frames per second. They keep
-only a few scalar fields and never allocate a full-screen RGB framebuffer.
-Theme changes deliberately skip animation: they clear once and repaint the
-complete active screen in the new palette so no scanline can remain in an
-otherwise untouched menu gap.
+`startWrite()` keeps a display-bus transaction open but does not make a group of
+LCD commands appear atomically. The UI therefore never runs a timed repaint
+loop. Cursor movement redraws two 15-pixel squares, selection redraws only the
+changed selection and legal-destination squares, and setup, pause, promotion,
+and Coach navigation redraw only the affected rows or detail region. A completed
+Coach search updates just the side panel when the board did not change.
+
+Transitions among board-backed screens repaint over the current frame without a
+blanking clear. Theme changes and structurally different screens still repaint
+the complete active screen once so no pixels from the previous layout remain.
+Move, check, and result feedback stays visible as static state rather than a
+repeated animation. This avoids continuous tearing while preserving the 64 KiB
+engine hash and 24 KiB search stack; a 240×135 16-bit framebuffer would consume
+another 64.8 KiB on a target with no PSRAM.
 
 The board uses 15×15-pixel squares, leaving native-font gutters for file and
 rank labels. Coordinate labels and piece placement both follow the human-side

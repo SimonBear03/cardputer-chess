@@ -25,7 +25,6 @@ constexpr int kBoardY = 1;
 constexpr int kSquarePixels = 15;
 constexpr int kPanelX = 133;
 constexpr int kPanelWidth = 107;
-constexpr std::uint32_t kAnimationFrameMs = 42;
 constexpr std::uint32_t kSearchTaskStackBytes = 24576;
 
 constexpr std::uint16_t rgb565(std::uint8_t red, std::uint8_t green,
@@ -51,14 +50,6 @@ enum class SideChoice : std::uint8_t { White, Black, Random };
 enum class ThemeMode : std::uint8_t { Classic, Neon, Royal };
 enum class SearchPurpose : std::uint8_t { Opponent, Coach };
 enum class SaveSlot : std::uint8_t { None, A, B };
-enum class AnimationKind : std::uint8_t {
-    None,
-    GameIntro,
-    MoveFeedback,
-    Win,
-    Loss,
-    Draw,
-};
 
 struct ThemePalette {
     const char* name;
@@ -104,20 +95,26 @@ constexpr std::array<ThemePalette, 3> kThemes = {{
      rgb565(34, 14, 30), rgb565(226, 177, 88)},
 }};
 
-struct UiAnimation {
-    AnimationKind kind = AnimationKind::None;
-    std::uint32_t startMs = 0;
-    std::uint32_t lastFrameMs = 0;
-    std::uint32_t durationMs = 0;
-    int square = -1;
-    MoveQuality quality = MoveQuality::Unavailable;
-    bool check = false;
-};
-
 struct GameRecord {
     Move move{};
     Undo undo{};
     std::array<char, 12> san{};
+};
+
+struct UiSnapshot {
+    Screen screen;
+    ThemeMode themeMode;
+    SideChoice sideChoice;
+    CoachMode coachMode;
+    int levelIndex;
+    int setupRow;
+    int pauseRow;
+    int cursorSquare;
+    int selectedSquare;
+    int promotionIndex;
+    std::uint16_t recordCount;
+    std::uint8_t coachLineIndex;
+    std::uint64_t legalDestinationMask;
 };
 
 Preferences preferences;
@@ -167,7 +164,6 @@ std::uint64_t gameSeed = 0;
 std::uint64_t searchRootKey = 0;
 Screen drawnScreen = Screen::Setup;
 bool hasDrawnScreen = false;
-UiAnimation animation{};
 SavedGame savedGameScratch{};
 std::array<std::uint8_t, kSavedGameMaxBytes> savedGameBytes{};
 SaveSlot activeSaveSlot = SaveSlot::None;
@@ -207,19 +203,11 @@ void cycleCoachMode(int direction) {
     coachMode = static_cast<CoachMode>(value);
 }
 
-void startAnimation(AnimationKind kind, std::uint32_t durationMs, int square = -1,
-                    MoveQuality quality = MoveQuality::Unavailable,
-                    bool check = false) {
-    const std::uint32_t now = millis();
-    animation = UiAnimation{kind, now, now, durationMs, square, quality, check};
-}
-
 void cycleTheme(int direction) {
     int value = static_cast<int>(themeMode);
     value = (value + (direction < 0 ? 2 : 1)) % 3;
     themeMode = static_cast<ThemeMode>(value);
     hasDrawnScreen = false;
-    animation = UiAnimation{};
 }
 
 void formatScore(std::int16_t scoreCp, char* output, std::size_t outputSize) {
@@ -297,6 +285,14 @@ bool isLegalDestination(int square) {
     return false;
 }
 
+std::uint64_t legalDestinationMask() {
+    std::uint64_t mask = 0;
+    for (std::uint16_t index = 0; index < selectedMoves.size; ++index) {
+        mask |= std::uint64_t{1} << selectedMoves[index].to;
+    }
+    return mask;
+}
+
 bool isCheckedKing(int square) {
     const Piece piece = game.pieceAt(square);
     return pieceType(piece) == PieceType::King && pieceColor(piece) == game.sideToMove() &&
@@ -342,36 +338,46 @@ void drawPiece(int x, int y, Piece piece) {
     }
 }
 
+void drawBoardSquare(int square) {
+    const ThemePalette& colors = theme();
+    const int column = squareToColumn(square);
+    const int row = squareToRow(square);
+    const int x = kBoardX + column * kSquarePixels;
+    const int y = kBoardY + row * kSquarePixels;
+    std::uint16_t color =
+        ((column + row) & 1) == 0 ? colors.boardLight : colors.boardDark;
+    if (hasLastMove && (square == lastMove.from || square == lastMove.to)) {
+        color = colors.lastMove;
+    }
+    if (square == selectedSquare) color = colors.selected;
+    if (isCheckedKing(square)) color = colors.check;
+    M5Cardputer.Display.fillRect(x, y, kSquarePixels, kSquarePixels, color);
+    if (isLegalDestination(square) && game.pieceAt(square) == 0) {
+        M5Cardputer.Display.fillCircle(x + 7, y + 7, 2, colors.legal);
+    } else if (isLegalDestination(square)) {
+        M5Cardputer.Display.drawRect(x + 1, y + 1, kSquarePixels - 2,
+                                     kSquarePixels - 2, colors.legal);
+    }
+    drawPiece(x, y, game.pieceAt(square));
+    if (square == cursorSquare) {
+        M5Cardputer.Display.drawRect(x, y, kSquarePixels, kSquarePixels,
+                                     colors.secondary);
+        M5Cardputer.Display.drawRect(x + 1, y + 1, kSquarePixels - 2,
+                                     kSquarePixels - 2, colors.secondary);
+    }
+}
+
+void drawBoardSquares() {
+    for (int square = 0; square < 64; ++square) {
+        drawBoardSquare(square);
+    }
+}
+
 void drawBoard() {
     const ThemePalette& colors = theme();
-    for (int row = 0; row < 8; ++row) {
-        for (int column = 0; column < 8; ++column) {
-            const int square = screenToSquare(column, row);
-            const int x = kBoardX + column * kSquarePixels;
-            const int y = kBoardY + row * kSquarePixels;
-            std::uint16_t color =
-                ((column + row) & 1) == 0 ? colors.boardLight : colors.boardDark;
-            if (hasLastMove && (square == lastMove.from || square == lastMove.to)) {
-                color = colors.lastMove;
-            }
-            if (square == selectedSquare) color = colors.selected;
-            if (isCheckedKing(square)) color = colors.check;
-            M5Cardputer.Display.fillRect(x, y, kSquarePixels, kSquarePixels, color);
-            if (isLegalDestination(square) && game.pieceAt(square) == 0) {
-                M5Cardputer.Display.fillCircle(x + 7, y + 7, 2, colors.legal);
-            } else if (isLegalDestination(square)) {
-                M5Cardputer.Display.drawRect(x + 1, y + 1, kSquarePixels - 2,
-                                             kSquarePixels - 2, colors.legal);
-            }
-            drawPiece(x, y, game.pieceAt(square));
-            if (square == cursorSquare) {
-                M5Cardputer.Display.drawRect(x, y, kSquarePixels, kSquarePixels,
-                                             colors.secondary);
-                M5Cardputer.Display.drawRect(x + 1, y + 1, kSquarePixels - 2,
-                                             kSquarePixels - 2, colors.secondary);
-            }
-        }
-    }
+    M5Cardputer.Display.fillRect(0, 0, kBoardX - 1, 135, colors.background);
+    M5Cardputer.Display.fillRect(kBoardX - 1, 122, 122, 13, colors.background);
+    drawBoardSquares();
     const int framePixels = 8 * kSquarePixels + 2;
     M5Cardputer.Display.drawRect(kBoardX - 1, kBoardY - 1, framePixels, framePixels,
                                  colors.accent);
@@ -476,6 +482,32 @@ void drawThemeIndicator(int x, int y) {
     }
 }
 
+void drawSetupRow(int row) {
+    const ThemePalette& colors = theme();
+    constexpr std::array<const char*, 4> labels = {
+        "PLAY AS", "LEVEL", "COACH", "THEME"};
+    const int y = 43 + row * 20;
+    M5Cardputer.Display.fillRect(8, y - 4, 224, 17, colors.background);
+    if (setupRow == row) {
+        M5Cardputer.Display.fillRoundRect(8, y - 4, 224, 17, 3, colors.surface);
+        drawText(12, y, ">", colors.secondary, 1);
+    }
+    drawText(24, y, labels[static_cast<std::size_t>(row)], colors.text, 1);
+    if (row == 0) {
+        drawText(150, y, sideChoiceName(sideChoice), colors.accent, 1);
+    } else if (row == 1) {
+        char value[32];
+        std::snprintf(value, sizeof(value), "%d %s", levelIndex + 1,
+                      levelConfig(levelIndex).name);
+        drawText(150, y, value, colors.accent, 1);
+    } else if (row == 2) {
+        drawText(150, y, coachModeName(coachMode), colors.accent, 1);
+    } else if (row == 3) {
+        drawText(150, y, colors.name, colors.accent, 1);
+        drawThemeIndicator(198, y - 1);
+    }
+}
+
 void drawSetup() {
     const ThemePalette& colors = theme();
     M5Cardputer.Display.fillRect(0, 0, 240, 33, colors.surface);
@@ -486,31 +518,23 @@ void drawSetup() {
     drawPiece(214, 7, makePiece(Color::White, PieceType::Knight));
     M5Cardputer.Display.drawFastHLine(4, 32, 236, colors.accent);
 
-    const std::array<const char*, 4> labels = {"PLAY AS", "LEVEL", "COACH", "THEME"};
     for (int row = 0; row < 4; ++row) {
-        const int y = 43 + row * 20;
-        M5Cardputer.Display.fillRect(8, y - 4, 224, 17, colors.background);
-        if (setupRow == row) {
-            M5Cardputer.Display.fillRoundRect(8, y - 4, 224, 17, 3, colors.surface);
-            drawText(12, y, ">", colors.secondary, 1);
-        }
-        drawText(24, y, labels[static_cast<std::size_t>(row)], colors.text, 1);
-        if (row == 0) {
-            drawText(150, y, sideChoiceName(sideChoice), colors.accent, 1);
-        } else if (row == 1) {
-            char value[32];
-            std::snprintf(value, sizeof(value), "%d %s", levelIndex + 1,
-                          levelConfig(levelIndex).name);
-            drawText(150, y, value, colors.accent, 1);
-        } else if (row == 2) {
-            drawText(150, y, coachModeName(coachMode), colors.accent, 1);
-        } else if (row == 3) {
-            drawText(150, y, colors.name, colors.accent, 1);
-            drawThemeIndicator(198, y - 1);
-        }
+        drawSetupRow(row);
     }
     drawText(12, 126, "ARROWS CHANGE", colors.muted, 1);
     drawText(162, 126, "ENTER START", colors.secondary, 1);
+}
+
+void drawPromotionChoice(int index) {
+    const ThemePalette& colors = theme();
+    constexpr std::array<PieceType, 4> choices = {
+        PieceType::Queen, PieceType::Rook, PieceType::Bishop, PieceType::Knight};
+    const int x = 47 + index * 37;
+    const std::uint16_t color =
+        index == promotionIndex ? colors.selected : colors.surfaceStrong;
+    M5Cardputer.Display.fillRoundRect(x, 63, 28, 25, 3, color);
+    drawPiece(x + 6, 68,
+              makePiece(humanColor, choices[static_cast<std::size_t>(index)]));
 }
 
 void drawPromotion() {
@@ -519,16 +543,41 @@ void drawPromotion() {
     M5Cardputer.Display.fillRoundRect(28, 38, 184, 58, 5, colors.surface);
     M5Cardputer.Display.drawRoundRect(28, 38, 184, 58, 5, colors.accent);
     drawText(42, 45, "CHOOSE PROMOTION", colors.text, 1);
-    constexpr std::array<PieceType, 4> choices = {
-        PieceType::Queen, PieceType::Rook, PieceType::Bishop, PieceType::Knight};
     for (int index = 0; index < 4; ++index) {
-        const int x = 47 + index * 37;
-        const std::uint16_t color = index == promotionIndex ? colors.selected
-                                                            : colors.surfaceStrong;
-        M5Cardputer.Display.fillRoundRect(x, 63, 28, 25, 3, color);
-        drawPiece(x + 6, 68,
-                  makePiece(humanColor, choices[static_cast<std::size_t>(index)]));
+        drawPromotionChoice(index);
     }
+}
+
+void drawCoachLineDetails() {
+    const ThemePalette& colors = theme();
+    M5Cardputer.Display.fillRect(22, 43, 196, 45, colors.surface);
+    coachLineIndex = std::min<std::uint8_t>(
+        coachLineIndex, static_cast<std::uint8_t>(coachAnalysis.lineCount - 1U));
+    const AnalysisLine& line = coachAnalysis.lines[coachLineIndex];
+    const std::string san = game.moveToSan(line.bestMove);
+    char score[12];
+    formatScore(line.scoreCp, score, sizeof(score));
+    char summary[36];
+    std::snprintf(summary, sizeof(summary), "%u/%u  %s   %s", coachLineIndex + 1U,
+                  coachAnalysis.lineCount, san.c_str(), score);
+    drawText(26, 47, summary, colors.text, 1);
+
+    const int loss = std::max<int>(0, coachAnalysis.lines[0].scoreCp - line.scoreCp);
+    char comparison[36];
+    if (coachLineIndex == 0) {
+        std::snprintf(comparison, sizeof(comparison), "Best line  depth %u",
+                      coachAnalysis.completedDepth);
+    } else {
+        std::snprintf(comparison, sizeof(comparison), "-%d.%02d vs best  depth %u",
+                      loss / 100, loss % 100, coachAnalysis.completedDepth);
+    }
+    drawText(26, 62, comparison,
+             coachLineIndex == 0 ? colors.legal : colors.accent, 1);
+
+    const std::string pv = principalVariationText(line);
+    char pvLine[36];
+    std::snprintf(pvLine, sizeof(pvLine), "PV %s", pv.c_str());
+    drawText(26, 77, pvLine, colors.muted, 1);
 }
 
 void drawCoach() {
@@ -559,36 +608,34 @@ void drawCoach() {
         return;
     }
 
-    coachLineIndex = std::min<std::uint8_t>(
-        coachLineIndex, static_cast<std::uint8_t>(coachAnalysis.lineCount - 1U));
-    const AnalysisLine& line = coachAnalysis.lines[coachLineIndex];
-    const std::string san = game.moveToSan(line.bestMove);
-    char score[12];
-    formatScore(line.scoreCp, score, sizeof(score));
-    char summary[36];
-    std::snprintf(summary, sizeof(summary), "%u/%u  %s   %s", coachLineIndex + 1U,
-                  coachAnalysis.lineCount, san.c_str(), score);
-    drawText(26, 47, summary, colors.text, 1);
-
-    const int loss = std::max<int>(0, coachAnalysis.lines[0].scoreCp - line.scoreCp);
-    char comparison[36];
-    if (coachLineIndex == 0) {
-        std::snprintf(comparison, sizeof(comparison), "Best line  depth %u",
-                      coachAnalysis.completedDepth);
-    } else {
-        std::snprintf(comparison, sizeof(comparison), "-%d.%02d vs best  depth %u",
-                      loss / 100, loss % 100, coachAnalysis.completedDepth);
-    }
-    drawText(26, 62, comparison,
-             coachLineIndex == 0 ? colors.legal : colors.accent, 1);
-
-    const std::string pv = principalVariationText(line);
-    char pvLine[36];
-    std::snprintf(pvLine, sizeof(pvLine), "PV %s", pv.c_str());
-    drawText(26, 77, pvLine, colors.muted, 1);
+    drawCoachLineDetails();
     M5Cardputer.Display.drawFastHLine(24, 91, 192, colors.surfaceStrong);
     drawText(26, 97, "LEFT/RIGHT  LINES", colors.muted, 1);
     drawText(26, 109, "ENTER SHOW   H CLOSE", colors.secondary, 1);
+}
+
+void drawPauseRow(int row) {
+    const ThemePalette& colors = theme();
+    constexpr std::array<const char*, 6> labels = {
+        "RESUME", "LEVEL", "COACH", "THEME", "UNDO TURN", "NEW GAME"};
+    const int y = 28 + row * 16;
+    M5Cardputer.Display.fillRect(8, y - 2, 224, 14, colors.background);
+    if (pauseRow == row) {
+        M5Cardputer.Display.fillRoundRect(8, y - 2, 224, 14, 3, colors.surface);
+        drawText(12, y, ">", colors.secondary, 1);
+    }
+    drawText(26, y, labels[static_cast<std::size_t>(row)], colors.text, 1);
+    if (row == 1) {
+        char value[28];
+        std::snprintf(value, sizeof(value), "%d %s", levelIndex + 1,
+                      levelConfig(levelIndex).name);
+        drawText(150, y, value, colors.accent, 1);
+    } else if (row == 2) {
+        drawText(150, y, coachModeName(coachMode), colors.accent, 1);
+    } else if (row == 3) {
+        drawText(150, y, colors.name, colors.accent, 1);
+        drawThemeIndicator(198, y - 1);
+    }
 }
 
 void drawPause() {
@@ -598,27 +645,8 @@ void drawPause() {
     drawText(12, 5, "GAME MENU", colors.accent, 2);
     drawPiece(214, 4, makePiece(Color::White, PieceType::King));
     M5Cardputer.Display.drawFastHLine(4, 23, 236, colors.accent);
-    const std::array<const char*, 6> labels = {"RESUME", "LEVEL", "COACH", "THEME",
-                                               "UNDO TURN", "NEW GAME"};
     for (int row = 0; row < 6; ++row) {
-        const int y = 28 + row * 16;
-        M5Cardputer.Display.fillRect(8, y - 2, 224, 14, colors.background);
-        if (pauseRow == row) {
-            M5Cardputer.Display.fillRoundRect(8, y - 2, 224, 14, 3, colors.surface);
-            drawText(12, y, ">", colors.secondary, 1);
-        }
-        drawText(26, y, labels[static_cast<std::size_t>(row)], colors.text, 1);
-        if (row == 1) {
-            char value[28];
-            std::snprintf(value, sizeof(value), "%d %s", levelIndex + 1,
-                          levelConfig(levelIndex).name);
-            drawText(150, y, value, colors.accent, 1);
-        } else if (row == 2) {
-            drawText(150, y, coachModeName(coachMode), colors.accent, 1);
-        } else if (row == 3) {
-            drawText(150, y, colors.name, colors.accent, 1);
-            drawThemeIndicator(198, y - 1);
-        }
+        drawPauseRow(row);
     }
     M5Cardputer.Display.fillRect(8, 124, 224, 11, colors.background);
     if (searchRunning) drawText(12, 126, "STOPPING ENGINE...", colors.check, 1);
@@ -633,93 +661,127 @@ void drawGameOver() {
     drawText(38, 79, "ENTER NEW GAME   U UNDO", colors.text, 1);
 }
 
-std::uint16_t moveFeedbackColor(MoveQuality quality) {
-    const ThemePalette& colors = theme();
-    switch (quality) {
-        case MoveQuality::Best:
-        case MoveQuality::Excellent:
-        case MoveQuality::Good: return colors.legal;
-        case MoveQuality::Inaccuracy:
-        case MoveQuality::OutsideTopThree: return colors.check;
-        case MoveQuality::Unavailable: return colors.secondary;
-    }
-    return colors.secondary;
+UiSnapshot captureUiSnapshot() {
+    return UiSnapshot{screen,
+                      themeMode,
+                      sideChoice,
+                      coachMode,
+                      levelIndex,
+                      setupRow,
+                      pauseRow,
+                      cursorSquare,
+                      selectedSquare,
+                      promotionIndex,
+                      recordCount,
+                      coachLineIndex,
+                      legalDestinationMask()};
 }
 
-AnimationKind outcomeAnimation() {
-    if (outcome != GameState::WhiteWinsCheckmate &&
-        outcome != GameState::BlackWinsCheckmate) {
-        return AnimationKind::Draw;
-    }
-    const Color winner = outcome == GameState::WhiteWinsCheckmate ? Color::White
-                                                                  : Color::Black;
-    return winner == humanColor ? AnimationKind::Win : AnimationKind::Loss;
+void redraw();
+
+void finishPartialRedraw() {
+    drawnScreen = screen;
+    hasDrawnScreen = true;
 }
 
-void drawAnimation() {
-    if (animation.kind == AnimationKind::None || animation.durationMs == 0) return;
-    const ThemePalette& colors = theme();
-    const std::uint32_t elapsed = std::min<std::uint32_t>(
-        millis() - animation.startMs, animation.durationMs);
-    if (animation.kind == AnimationKind::GameIntro) {
-        const int scanY = kBoardY + static_cast<int>(elapsed * 119U / animation.durationMs);
-        M5Cardputer.Display.drawFastHLine(kBoardX, scanY, 8 * kSquarePixels,
-                                          colors.accent);
-        if (scanY > kBoardY) {
-            M5Cardputer.Display.drawFastHLine(kBoardX, scanY - 1, 8 * kSquarePixels,
-                                              colors.secondary);
-        }
+void redrawPanelOnly() {
+    M5Cardputer.Display.startWrite();
+    drawPanel();
+    M5Cardputer.Display.endWrite();
+    finishPartialRedraw();
+}
+
+void redrawAfterAction(const UiSnapshot& before) {
+    if (!hasDrawnScreen || before.screen != screen ||
+        before.themeMode != themeMode) {
+        redraw();
         return;
     }
-    if (animation.kind == AnimationKind::MoveFeedback && animation.square >= 0) {
-        const int column = squareToColumn(animation.square);
-        const int row = squareToRow(animation.square);
-        const int x = kBoardX + column * kSquarePixels;
-        const int y = kBoardY + row * kSquarePixels;
-        const std::uint16_t glow = moveFeedbackColor(animation.quality);
-        M5Cardputer.Display.drawRect(x, y, kSquarePixels, kSquarePixels, glow);
-        if (((elapsed / 84U) & 1U) == 0U) {
-            M5Cardputer.Display.drawRect(x + 1, y + 1, kSquarePixels - 2,
-                                         kSquarePixels - 2, glow);
-        }
-        if (animation.check) {
-            for (int square = 0; square < 64; ++square) {
-                if (!isCheckedKing(square)) continue;
-                const int kingX = kBoardX + squareToColumn(square) * kSquarePixels;
-                const int kingY = kBoardY + squareToRow(square) * kSquarePixels;
-                M5Cardputer.Display.drawRect(kingX, kingY, kSquarePixels,
-                                             kSquarePixels, colors.check);
-                break;
+
+    M5Cardputer.Display.startWrite();
+    bool changed = false;
+    switch (screen) {
+        case Screen::Setup: {
+            const bool rowChanged = before.setupRow != setupRow;
+            const bool valueChanged = before.sideChoice != sideChoice ||
+                                      before.levelIndex != levelIndex ||
+                                      before.coachMode != coachMode;
+            if (rowChanged) {
+                drawSetupRow(before.setupRow);
+                drawSetupRow(setupRow);
+                changed = true;
+            } else if (valueChanged) {
+                drawSetupRow(setupRow);
+                changed = true;
             }
+            break;
         }
-        return;
+        case Screen::Playing:
+            if (before.recordCount != recordCount) {
+                drawGame();
+                changed = true;
+            } else {
+                std::uint64_t dirtySquares =
+                    before.legalDestinationMask ^ legalDestinationMask();
+                if (before.selectedSquare != selectedSquare) {
+                    if (before.selectedSquare >= 0) {
+                        dirtySquares |= std::uint64_t{1} << before.selectedSquare;
+                    }
+                    if (selectedSquare >= 0) {
+                        dirtySquares |= std::uint64_t{1} << selectedSquare;
+                    }
+                }
+                if (before.cursorSquare != cursorSquare) {
+                    dirtySquares |= std::uint64_t{1} << before.cursorSquare;
+                    dirtySquares |= std::uint64_t{1} << cursorSquare;
+                }
+                for (int square = 0; square < 64; ++square) {
+                    if ((dirtySquares & (std::uint64_t{1} << square)) != 0) {
+                        drawBoardSquare(square);
+                        changed = true;
+                    }
+                }
+            }
+            break;
+        case Screen::Promotion:
+            if (before.promotionIndex != promotionIndex) {
+                drawPromotionChoice(before.promotionIndex);
+                drawPromotionChoice(promotionIndex);
+                changed = true;
+            }
+            break;
+        case Screen::Coach:
+            if (before.coachLineIndex != coachLineIndex && coachAnalysisCurrent()) {
+                drawCoachLineDetails();
+                changed = true;
+            }
+            break;
+        case Screen::Pause: {
+            const bool rowChanged = before.pauseRow != pauseRow;
+            const bool valueChanged = before.levelIndex != levelIndex ||
+                                      before.coachMode != coachMode;
+            if (rowChanged) {
+                drawPauseRow(before.pauseRow);
+                drawPauseRow(pauseRow);
+                changed = true;
+            } else if (valueChanged) {
+                drawPauseRow(pauseRow);
+                changed = true;
+            }
+            break;
+        }
+        case Screen::GameOver: break;
     }
-
-    const std::uint16_t celebration = animation.kind == AnimationKind::Win
-                                          ? colors.accent
-                                          : animation.kind == AnimationKind::Loss
-                                                ? colors.check
-                                                : colors.secondary;
-    constexpr std::array<int, 12> confettiX = {8, 28, 53, 79, 107, 129,
-                                               151, 174, 198, 224, 46, 188};
-    constexpr std::array<int, 12> confettiY = {10, 119, 18, 111, 7, 126,
-                                               15, 116, 6, 123, 31, 35};
-    const int count = std::min<int>(12, static_cast<int>(elapsed * 13U /
-                                                         animation.durationMs));
-    for (int index = 0; index < count; ++index) {
-        const int drop = static_cast<int>((elapsed / 55U + index * 3U) % 12U);
-        M5Cardputer.Display.fillRect(confettiX[static_cast<std::size_t>(index)],
-                                     confettiY[static_cast<std::size_t>(index)] + drop,
-                                     2, 2, celebration);
-    }
-    if (((elapsed / 150U) & 1U) == 0U) {
-        M5Cardputer.Display.drawRoundRect(21, 38, 198, 60, 6, celebration);
-    }
+    M5Cardputer.Display.endWrite();
+    if (changed) finishPartialRedraw();
 }
 
 void redraw() {
     M5Cardputer.Display.startWrite();
-    if (!hasDrawnScreen || drawnScreen != screen) {
+    const bool gameBackedScreen =
+        screen == Screen::Playing || screen == Screen::Promotion ||
+        screen == Screen::Coach || screen == Screen::GameOver;
+    if (!hasDrawnScreen || (drawnScreen != screen && !gameBackedScreen)) {
         M5Cardputer.Display.fillScreen(theme().background);
     }
     switch (screen) {
@@ -730,7 +792,6 @@ void redraw() {
         case Screen::Pause: drawPause(); break;
         case Screen::GameOver: drawGameOver(); break;
     }
-    drawAnimation();
     M5Cardputer.Display.endWrite();
     drawnScreen = screen;
     hasDrawnScreen = true;
@@ -968,7 +1029,6 @@ bool restoreSavedGame() {
     pendingOpponentSearch = false;
     openCoachWhenReady = false;
     engineLaunchFailed = false;
-    animation = UiAnimation{};
     outcome = game.gameState();
     refreshLastMove();
     cursorSquare = hasLastMove ? lastMove.to
@@ -997,7 +1057,6 @@ void performUndo() {
     coachAnalysis = SearchResult{};
     coachAnalysisKey = 0;
     coachFeedback = CoachFeedback{};
-    animation = UiAnimation{};
     refreshLastMove();
     screen = Screen::Playing;
     cursorSquare = humanColor == Color::White ? 12 : 52;
@@ -1019,8 +1078,6 @@ void applyMove(const Move& move) {
             pendingOpponentSearch = true;
         }
     }
-    const MoveQuality playedQuality = humanMove ? coachFeedback.quality
-                                                : MoveQuality::Unavailable;
     Undo undo;
     if (!game.makeMove(move, undo)) return;
     GameRecord& record = records[recordCount++];
@@ -1038,11 +1095,8 @@ void applyMove(const Move& move) {
     saveCurrentGame();
     if (outcome != GameState::Ongoing) {
         screen = Screen::GameOver;
-        startAnimation(outcomeAnimation(), 1450);
     } else {
         screen = Screen::Playing;
-        startAnimation(AnimationKind::MoveFeedback, 360, move.to, playedQuality,
-                       game.inCheck(game.sideToMove()));
         startTurnSearch();
     }
 }
@@ -1073,7 +1127,6 @@ void newGame() {
     }
     cursorSquare = humanColor == Color::White ? 12 : 52;
     screen = Screen::Playing;
-    startAnimation(AnimationKind::GameIntro, 360);
     savePreferences();
     saveCurrentGame();
     startTurnSearch();
@@ -1287,6 +1340,8 @@ void handleGameOver(Action action) {
 
 void consumeSearchResult() {
     if (!searchDone) return;
+    const Screen screenBeforeResult = screen;
+    const std::uint16_t recordCountBeforeResult = recordCount;
     SearchResult result;
     SearchPurpose completedPurpose;
     portENTER_CRITICAL(&resultMutex);
@@ -1323,7 +1378,12 @@ void consumeSearchResult() {
         }
     }
     openCoachWhenReady = false;
-    redraw();
+    if (screenBeforeResult == Screen::Playing && screen == Screen::Playing &&
+        recordCountBeforeResult == recordCount) {
+        redrawPanelOnly();
+    } else {
+        redraw();
+    }
 }
 
 }  // namespace
@@ -1345,6 +1405,7 @@ void loop() {
 
     const Action action = readAction();
     if (action != Action::None) {
+        const UiSnapshot before = captureUiSnapshot();
         switch (screen) {
             case Screen::Setup: handleSetup(action); break;
             case Screen::Playing: handlePlaying(action); break;
@@ -1353,18 +1414,7 @@ void loop() {
             case Screen::Pause: handlePause(action); break;
             case Screen::GameOver: handleGameOver(action); break;
         }
-        redraw();
-    }
-
-    if (animation.kind != AnimationKind::None) {
-        const std::uint32_t now = millis();
-        if (now - animation.lastFrameMs >= kAnimationFrameMs) {
-            animation.lastFrameMs = now;
-            if (now - animation.startMs >= animation.durationMs) {
-                animation = UiAnimation{};
-            }
-            redraw();
-        }
+        redrawAfterAction(before);
     }
 
     delay(8);

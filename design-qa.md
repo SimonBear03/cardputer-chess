@@ -162,8 +162,8 @@ assets, and visible copy are coherent at the target viewport.
   settings.
 - Setup, playing, promotion, Coach, pause, and game-over screens use the active
   palette and the shared generated piece assets.
-- Intro, move/check, and result animations use a 42 ms non-blocking
-  update cadence without a framebuffer or delay loop.
+- Board navigation redraws only dirty 15-pixel squares, and menu navigation
+  redraws only dirty rows; there is no timed full-screen repaint loop.
 - Theme selection uses one complete redraw rather than an overlay animation,
   preventing residual scanline fragments in partially repainted menu gaps.
 - The primary interaction paths compile in the final firmware build; no build
@@ -177,7 +177,7 @@ assets, and visible copy are coherent at the target viewport.
 ## Follow-up Polish
 
 - [P3] Confirm the smallest coordinate labels, muted labels, revised solid-piece
-  contrast, and short animation timing on the physical LCD under both bright-room
-  and low-light conditions.
+  contrast, and dirty-region stability on the physical LCD under both
+  bright-room and low-light conditions.
 
 final result: passed
